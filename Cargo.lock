@@ -3892,7 +3892,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "solana-verify"
+name = "solana-verify-test"
 version = "0.4.15"
 dependencies = [
  "anyhow",
