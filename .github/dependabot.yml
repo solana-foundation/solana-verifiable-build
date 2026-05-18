@@ -7,7 +7,7 @@ updates:
     open-pull-requests-limit: 10
     cooldown:
       default-days: 7
-      semver-patch-days: 0
+      semver-patch-days: 1
     groups:
       cargo-non-major:
         applies-to: version-updates
