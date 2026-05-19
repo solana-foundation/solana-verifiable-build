@@ -39,9 +39,9 @@ use image_config::IMAGE_MAP;
 mod test;
 
 use crate::solana_program::{
-    compose_instruction, compose_transaction, find_build_params_pda, get_all_pdas_available,
-    get_program_pda, process_close, resolve_rpc_url, upload_program_verification_data,
-    validate_config_and_keypair, InputParams, OtterBuildParams, OtterVerifyInstructions,
+    compose_transaction, find_build_params_pda, get_all_pdas_available, get_program_pda,
+    process_close, resolve_rpc_url, upload_program_verification_data, validate_config_and_keypair,
+    InputParams, OtterBuildParams, OtterVerifyInstructions,
 };
 
 const MAINNET_GENESIS_HASH: &str = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
@@ -341,62 +341,6 @@ async fn main() -> anyhow::Result<()> {
                 .multiple(true)
                 .last(true)
                 .help("Arguments to pass to the underlying `cargo build-sbf` command")))
-        .subcommand(SubCommand::with_name("export-pda-ix")
-            .about("Export the instruction as base58/base64")
-            .arg(Arg::with_name("uploader")
-                .long("uploader")
-                .takes_value(true)
-                .required(true)
-                .help("Specifies an address to use for uploading the program verification args (should be the program authority)"))
-            .arg(Arg::with_name("encoding")
-                .long("encoding")
-                .takes_value(true)
-                .default_value("base58")
-                .possible_values(&["base58", "base64"])
-                .help("The encoding to use for the instruction"))
-            .arg(Arg::with_name("mount-path")
-                .long("mount-path")
-                .takes_value(true)
-                .default_value("")
-                .help("Relative path to the root directory or the source code repository from which to build the program"))
-            .arg(Arg::with_name("workspace-path")
-                .long("workspace-path")
-                .takes_value(true)
-                .default_value("")
-                .help("Relative path to the program workspace (for monorepos). Use when the program is in a separate workspace that references other crates. Defaults to mount-path."))
-            .arg(Arg::with_name("repo-url")
-                .required(true)
-                .help("The HTTPS URL of the repo to clone"))
-            .arg(Arg::with_name("commit-hash")
-                .long("commit-hash")
-                .takes_value(true)
-                .help("Commit hash to checkout. Required to know the correct program snapshot. Will fallback to HEAD if not provided"))
-            .arg(Arg::with_name("program-id")
-                .long("program-id")
-                .required(true)
-                .takes_value(true)
-                .help("The Program ID of the program to verify"))
-            .arg(Arg::with_name("base-image")
-                .short("b")
-                .long("base-image")
-                .takes_value(true)
-                .help("Optionally specify a custom base docker image to use for building"))
-            .arg(Arg::with_name("library-name")
-                .long("library-name")
-                .takes_value(true)
-                .help("Specify the name of the library to build and verify"))
-            .arg(Arg::with_name("bpf")
-                .long("bpf")
-                .help("If the program requires cargo build-bpf (instead of cargo build-sbf), set this flag"))
-            .arg(Arg::with_name("arch")
-                .long("arch")
-                .takes_value(true)
-                .possible_values(&["v0", "v1", "v2", "v3"])
-                .help("Build for the given target architecture [default: v0]"))
-            .arg(Arg::with_name("cargo-args")
-                .multiple(true)
-                .last(true)
-                .help("Arguments to pass to the underlying `cargo build-sbf` command")))
         .subcommand(SubCommand::with_name("close")
             .about("Close the otter-verify PDA account associated with the given program ID")
             .arg(Arg::with_name("program-id")
@@ -682,63 +626,6 @@ async fn main() -> anyhow::Result<()> {
                 cargo_build_sbf_args,
                 cargo_args,
                 compute_unit_price,
-                false,
-            )
-            .await
-        }
-        ("export-pda-ix", Some(sub_m)) => {
-            let uploader = sub_m.value_of("uploader").unwrap();
-            let mount_path = sub_m.value_of("mount-path").map(|s| s.to_string()).unwrap();
-            let workspace_path = sub_m
-                .value_of("workspace-path")
-                .map(|s| s.to_string())
-                .unwrap_or_default();
-            let repo_url = sub_m.value_of("repo-url").map(|s| s.to_string()).unwrap();
-            let program_id = sub_m.value_of("program-id").unwrap();
-            let base_image = sub_m.value_of("base-image").map(|s| s.to_string());
-            let library_name = sub_m.value_of("library-name").map(|s| s.to_string());
-            let bpf_flag = sub_m.is_present("bpf");
-            let arch = sub_m.value_of("arch").map(|s| s.to_string());
-            let encoding = sub_m.value_of("encoding").unwrap();
-
-            let encoding: UiTransactionEncoding = match encoding {
-                "base58" => UiTransactionEncoding::Base58,
-                "base64" => UiTransactionEncoding::Base64,
-                _ => {
-                    return Err(anyhow!("Unsupported encoding: {}", encoding));
-                }
-            };
-
-            let commit_hash = get_commit_hash(sub_m, &repo_url)?;
-            let cargo_args: Vec<String> = sub_m
-                .values_of("cargo-args")
-                .unwrap_or_default()
-                .map(|s| s.to_string())
-                .collect();
-
-            let connection = resolve_rpc_url(
-                matches.value_of("url").map(|s| s.to_string()),
-                config_path.clone(),
-            )?;
-            println!("Using connection url: {}", connection.url());
-
-            export_pda_tx(
-                &connection,
-                Address::try_from(program_id)?,
-                Address::try_from(uploader)?,
-                repo_url,
-                commit_hash,
-                mount_path,
-                workspace_path,
-                library_name,
-                base_image,
-                bpf_flag,
-                arch,
-                &mut temp_dir,
-                encoding,
-                cargo_args,
-                0, // compute_unit_price not relevant with just the update ix
-                true,
             )
             .await
         }
@@ -1902,7 +1789,6 @@ async fn export_pda_tx(
     cargo_build_sbf_args: Option<String>,
     cargo_args: Vec<String>,
     compute_unit_price: u64,
-    ix_only: bool,
 ) -> anyhow::Result<()> {
     let last_deployed_slot = get_last_deployed_slot(connection, &program_id.to_string())
         .await
@@ -1959,43 +1845,26 @@ async fn export_pda_tx(
         Err(_) => OtterVerifyInstructions::Initialize,
     };
 
-    if ix_only {
-        let ix = compose_instruction(&input_params, uploader, pda, program_id, instruction);
+    let tx = compose_transaction(
+        &input_params,
+        uploader,
+        pda,
+        program_id,
+        instruction,
+        compute_unit_price,
+    );
 
-        // serialize the instruction
-        match encoding {
-            UiTransactionEncoding::Base58 => {
-                let encoded = bs58::encode(serialize(&ix)?).into_string();
-                println!("{encoded}");
-            }
-            UiTransactionEncoding::Base64 => {
-                let encoded = BASE64_STANDARD.encode(serialize(&ix)?);
-                println!("{encoded}");
-            }
-            _ => unreachable!(),
+    // serialize the transaction to base58
+    match encoding {
+        UiTransactionEncoding::Base58 => {
+            let encoded = bs58::encode(serialize(&tx)?).into_string();
+            println!("{encoded}");
         }
-    } else {
-        let tx = compose_transaction(
-            &input_params,
-            uploader,
-            pda,
-            program_id,
-            instruction,
-            compute_unit_price,
-        );
-
-        // serialize the transaction to base58
-        match encoding {
-            UiTransactionEncoding::Base58 => {
-                let encoded = bs58::encode(serialize(&tx)?).into_string();
-                println!("{encoded}");
-            }
-            UiTransactionEncoding::Base64 => {
-                let encoded = BASE64_STANDARD.encode(serialize(&tx)?);
-                println!("{encoded}");
-            }
-            _ => unreachable!(),
+        UiTransactionEncoding::Base64 => {
+            let encoded = BASE64_STANDARD.encode(serialize(&tx)?);
+            println!("{encoded}");
         }
+        _ => unreachable!(),
     }
 
     Ok(())

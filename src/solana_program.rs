@@ -151,13 +151,14 @@ pub fn validate_config_and_keypair(
     Ok(())
 }
 
-pub fn compose_instruction(
+pub fn compose_transaction(
     params: &InputParams,
     signer_pubkey: Address,
     pda_account: Address,
     program_address: Address,
     instruction: OtterVerifyInstructions,
-) -> solana_instruction::Instruction {
+    compute_unit_price: u64,
+) -> Transaction {
     let ix_data = if instruction != OtterVerifyInstructions::Close {
         create_ix_data(params, &instruction)
     } else {
@@ -177,27 +178,10 @@ pub fn compose_instruction(
         ));
     }
 
-    solana_instruction::Instruction::new_with_bytes(
+    let ix = solana_instruction::Instruction::new_with_bytes(
         OTTER_VERIFY_PROGRAM_ID,
         &ix_data,
         accounts_meta_vec,
-    )
-}
-
-pub fn compose_transaction(
-    params: &InputParams,
-    signer_pubkey: Address,
-    pda_account: Address,
-    program_address: Address,
-    instruction: OtterVerifyInstructions,
-    compute_unit_price: u64,
-) -> Transaction {
-    let ix = compose_instruction(
-        params,
-        signer_pubkey,
-        pda_account,
-        program_address,
-        instruction,
     );
 
     let message = if compute_unit_price > 0 {
