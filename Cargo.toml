@@ -12,7 +12,7 @@ base64 = "0.22.1"
 bincode = "1.3.3"
 borsh = { version = "1.2.1", features = ["derive"] }
 bs58 = "0.5.1"
-cargo-lock = "10.1.0" # missing in workspace
+cargo-lock = "11.0.1" # missing in workspace
 cargo_toml = "0.22" # missing in workspace
 clap = "2.33.1" # version of v1.18 does not support derive
 crossbeam-channel = "0.5.11"
