@@ -109,7 +109,7 @@ jobs:
 
       - name: Cache cargo-edit binary
         id: cache-cargo-edit
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/bin/cargo-set-version
           key: cargo-edit-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
@@ -176,7 +176,7 @@ jobs:
 
       - name: Upload dry-run release source snapshot
         if: ${{ steps.validate.outputs.dry_run == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: source-snapshot
           path: source-snapshot.tar.gz
@@ -272,7 +272,7 @@ jobs:
 
       - name: Download dry-run release source snapshot
         if: ${{ needs.prepare.outputs.dry_run == 'true' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: source-snapshot
           path: .
@@ -333,7 +333,7 @@ jobs:
           shasum -a 256 "$BIN" > "${BIN}.sha256"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.name }}
           path: |
@@ -358,7 +358,7 @@ jobs:
 
       - name: Download dry-run release source snapshot
         if: ${{ needs.prepare.outputs.dry_run == 'true' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: source-snapshot
           path: .
@@ -449,7 +449,7 @@ jobs:
           toolchain: 1.94.0
 
       - name: Download release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: /tmp/release-dist
@@ -480,7 +480,7 @@ jobs:
           git push origin "$TAG"
 
       - name: Create GitHub release and upload assets
-        uses: softprops/action-gh-release@v2.6.1
+        uses: softprops/action-gh-release@v3.0.0
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           target_commitish: ${{ needs.prepare.outputs.release_commit }}

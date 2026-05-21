@@ -52,7 +52,7 @@ jobs:
           inject-env-vars: true
 
       - name: Checkout API repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: otter-sec/solana-verified-programs-api
           token: ${{ steps.doppler.outputs.SOLANA_VERIFIED_PROGRAMS_API_PAT }}
@@ -75,7 +75,7 @@ jobs:
           git diff -- api/Dockerfile || true
 
       - name: Create pull request in API repo
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ steps.doppler.outputs.SOLANA_VERIFIED_PROGRAMS_API_PAT }}
           commit-message: 'Update solana-verify to ${{ steps.meta.outputs.tag }}'
