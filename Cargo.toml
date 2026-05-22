@@ -1,6 +1,6 @@
 [package]
 name = "solana-verify"
-version = "0.4.15"
+version = "0.5.0"
 edition = "2021"
 description = "A CLI tool for building verifiable Solana programs"
 license = "MIT"
