@@ -35,7 +35,7 @@ reqwest = { version = "0.12.28", features = ["json"] }
 serde = { version = "1.0.195", features = ["derive"] }
 serde_json = "1.0.111"
 sha256 = "1.1.1" # missing in workspace
-signal-hook = "0.3.17"
+signal-hook = "0.4.4"
 solana-account-decoder-client-types = "=3.1.9"
 solana-address = { version = "=2.2.0", features = ["decode"] }
 solana-clap-utils = "=3.1.9"
