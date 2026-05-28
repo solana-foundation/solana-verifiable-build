@@ -31,7 +31,7 @@ indicatif = "0.18.4"
 lazy_static = "1.4.0"
 pathdiff = "0.2.0" # missing in workspace
 regex = "1.11.1"
-reqwest = { version = "0.12.28", features = ["json"] }
+reqwest = { version = "0.13.3", features = ["json"] }
 serde = { version = "1.0.195", features = ["derive"] }
 serde_json = "1.0.111"
 sha256 = "1.1.1" # missing in workspace
