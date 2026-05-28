@@ -20,7 +20,7 @@ jobs:
       id-token: write
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - uses: dopplerhq/secrets-fetch-action@v2.0.0
         id: doppler
@@ -47,7 +47,7 @@ jobs:
 
       - name: Build and push Docker images
         id: push
-        uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
         with:
           context: docker/
           file: docker/v${{ github.event.inputs.version }}.Dockerfile
@@ -60,7 +60,7 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
       - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: index.docker.io/solanafoundation/solana-verifiable-build
           subject-digest: ${{ steps.push.outputs.digest }}
