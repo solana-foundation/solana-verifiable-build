@@ -24,7 +24,7 @@ borsh = { version = "1.2.1", features = ["derive"] }
 bs58 = "0.5.1"
 cargo-lock = "11.0.1" # missing in workspace
 cargo_toml = "0.22" # missing in workspace
-clap = "2.33.1" # version of v1.18 does not support derive
+clap = "4.6.1" # version of v1.18 does not support derive
 crossbeam-channel = "0.5.11"
 hex = "0.4.3"
 indicatif = "0.18.4"
