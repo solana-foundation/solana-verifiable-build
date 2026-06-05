@@ -2778,7 +2778,7 @@ dependencies = [
  "serde",
  "serde_json",
  "solana-account",
- "solana-account-decoder-client-types",
+ "solana-account-decoder-client-types 3.1.9",
  "solana-address-lookup-table-interface",
  "solana-clock",
  "solana-config-interface",
@@ -2819,6 +2819,20 @@ dependencies = [
  "solana-account",
  "solana-pubkey 3.0.0",
  "zstd",
+]
+
+[[package]]
+name = "solana-account-decoder-client-types"
+version = "4.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cab21a2655cb5849fda9193f1d42ee1c16030bf7387248fe31623ab9bc6d1db"
+dependencies = [
+ "base64",
+ "bs58",
+ "serde",
+ "serde_json",
+ "solana-account",
+ "solana-pubkey 4.1.0",
 ]
 
 [[package]]
@@ -3474,7 +3488,7 @@ dependencies = [
  "serde_json",
  "solana-account",
  "solana-account-decoder",
- "solana-account-decoder-client-types",
+ "solana-account-decoder-client-types 3.1.9",
  "solana-clock",
  "solana-commitment-config",
  "solana-epoch-info",
@@ -3506,7 +3520,7 @@ dependencies = [
  "reqwest-middleware",
  "serde",
  "serde_json",
- "solana-account-decoder-client-types",
+ "solana-account-decoder-client-types 3.1.9",
  "solana-clock",
  "solana-rpc-client-types",
  "solana-signer",
@@ -3527,7 +3541,7 @@ dependencies = [
  "serde",
  "serde_json",
  "solana-account",
- "solana-account-decoder-client-types",
+ "solana-account-decoder-client-types 3.1.9",
  "solana-address 1.1.0",
  "solana-clock",
  "solana-commitment-config",
@@ -3861,7 +3875,7 @@ dependencies = [
  "bs58",
  "serde",
  "serde_json",
- "solana-account-decoder-client-types",
+ "solana-account-decoder-client-types 3.1.9",
  "solana-commitment-config",
  "solana-instruction",
  "solana-message",
@@ -3897,7 +3911,7 @@ dependencies = [
  "serde_json",
  "sha256",
  "signal-hook",
- "solana-account-decoder-client-types",
+ "solana-account-decoder-client-types 4.0.1",
  "solana-address 2.6.0",
  "solana-clap-utils",
  "solana-cli-config",
