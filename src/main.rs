@@ -623,7 +623,7 @@ async fn main() -> anyhow::Result<()> {
                     .transpose()?;
                 let target = select_metadata_target(&connection, &program_id, authority)?;
                 let (verification_account, idl_metadata) =
-                    fetch_idl_verification_metadata(&connection, &program_id, &target)?;
+                    fetch_idl_verification_metadata(&connection, &program_id, &target).await?;
 
                 let (_, build_params) = get_program_pda(
                     &connection,
@@ -649,7 +649,7 @@ async fn main() -> anyhow::Result<()> {
                     &mut temp_dir,
                 )?;
 
-                let verification_result = (|| -> anyhow::Result<()> {
+                let verification_result = async {
                     let outcome = verify_idl_against_on_chain(
                         &connection,
                         &program_id,
@@ -657,7 +657,8 @@ async fn main() -> anyhow::Result<()> {
                         Path::new(&verify_tmp_root_path),
                         &idl_metadata,
                         verification_account.address,
-                    )?;
+                    )
+                    .await?;
                     print_idl_verification_outcome(&outcome);
                     print_executable_verification_pair_match(&executable_pair);
                     ensure!(
@@ -670,8 +671,9 @@ async fn main() -> anyhow::Result<()> {
                         "IDL verification repo and commit do not match program verification for program {}",
                         program_id
                     );
-                    Ok(())
-                })();
+                    anyhow::Ok(())
+                }
+                .await;
 
                 cleanup_verify_dir(&verify_dir)?;
                 verification_result
@@ -720,7 +722,7 @@ async fn main() -> anyhow::Result<()> {
                     &mut temp_dir,
                 )?;
 
-                let verification_result = (|| -> anyhow::Result<()> {
+                let verification_result = async {
                     let verification_account =
                         target.pda_for_seed(&program_id, IDL_VERIFICATION_SEED);
                     let outcome = verify_idl_against_on_chain(
@@ -730,7 +732,8 @@ async fn main() -> anyhow::Result<()> {
                         Path::new(&verify_tmp_root_path),
                         &idl_metadata,
                         verification_account,
-                    )?;
+                    )
+                    .await?;
                     print_idl_verification_outcome(&outcome);
                     print_executable_verification_pair_match(&executable_pair);
                     ensure!(
@@ -753,8 +756,9 @@ async fn main() -> anyhow::Result<()> {
                         compute_unit_price,
                         config_path.clone(),
                     )?;
-                    Ok(())
-                })();
+                    anyhow::Ok(())
+                }
+                .await;
 
                 cleanup_verify_dir(&verify_dir)?;
                 verification_result
@@ -1798,7 +1802,8 @@ pub async fn verify_from_repo(
                         Path::new(&verify_tmp_root_path),
                         idl_metadata,
                         verification_account,
-                    )?;
+                    )
+                    .await?;
                     print_idl_verification_outcome(&outcome);
                     print_executable_verification_pair_match(&executable_pair);
                     ensure!(

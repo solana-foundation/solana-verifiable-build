@@ -27,6 +27,9 @@ use crate::solana_program::{
 
 pub const IDL_SEED: &str = "idl";
 pub const IDL_VERIFICATION_SEED: &str = "idl-verification";
+
+/// Real metadata header length 
+/// Generated client ignores the 5 padding bytes https://github.com/solana-program/program-metadata/blob/main/program/src/state/header.rs#L70
 const METADATA_HEADER_LENGTH: usize = 96;
 const METADATA_HEADER_PADDING: usize = 5;
 
@@ -113,6 +116,11 @@ impl IdlVerificationMetadata {
         ensure!(
             !self.commit.trim().is_empty(),
             "IDL verification metadata requires non-empty 'commit'"
+        );
+        ensure!(
+            self.commit.len() == 40 && self.commit.chars().all(|c| c.is_ascii_hexdigit()),
+            "IDL verification metadata 'commit' must be a full 40-character hex SHA, got '{}'",
+            self.commit
         );
         ensure!(
             !self.path.trim().is_empty(),
@@ -378,19 +386,19 @@ pub fn fetch_matching_metadata_account(
     Ok(FetchedMetadataAccount { address, metadata })
 }
 
-pub fn fetch_idl_verification_metadata(
+pub async fn fetch_idl_verification_metadata(
     client: &RpcClient,
     program_id: &Address,
     target: &MetadataTarget,
 ) -> anyhow::Result<(FetchedMetadataAccount, IdlVerificationMetadata)> {
     let account =
         fetch_matching_metadata_account(client, program_id, target, IDL_VERIFICATION_SEED)?;
-    let content = resolve_metadata_content_bytes(client, &account.metadata)?;
+    let content = resolve_metadata_content_bytes(client, &account.metadata).await?;
     let metadata = parse_idl_verification_metadata(&content)?;
     Ok((account, metadata))
 }
 
-pub fn resolve_metadata_content_bytes(
+pub async fn resolve_metadata_content_bytes(
     client: &RpcClient,
     metadata: &Metadata,
 ) -> anyhow::Result<Vec<u8>> {
@@ -401,7 +409,8 @@ pub fn resolve_metadata_content_bytes(
             let url_bytes = decode_packed_bytes(packed, metadata.compression, metadata.encoding)?;
             let url = String::from_utf8(url_bytes)
                 .map_err(|err| anyhow!("program-metadata URL is not valid UTF-8: {}", err))?;
-            let response = reqwest::blocking::get(&url)
+            let response = reqwest::get(&url)
+                .await
                 .map_err(|err| anyhow!("Failed to fetch metadata URL '{}': {}", url, err))?;
             ensure!(
                 response.status().is_success(),
@@ -409,7 +418,7 @@ pub fn resolve_metadata_content_bytes(
                 url,
                 response.status()
             );
-            Ok(response.bytes()?.to_vec())
+            Ok(response.bytes().await?.to_vec())
         }
         DataSource::External => {
             let external = unpack_external_data(&packed)?;
@@ -609,7 +618,7 @@ pub fn idl_hash_from_path(path: &Path) -> anyhow::Result<String> {
     Ok(idl_hash_from_bytes(&bytes))
 }
 
-pub fn verify_idl_against_on_chain(
+pub async fn verify_idl_against_on_chain(
     client: &RpcClient,
     program_id: &Address,
     target: &MetadataTarget,
@@ -618,7 +627,7 @@ pub fn verify_idl_against_on_chain(
     verification_account: Address,
 ) -> anyhow::Result<IdlVerificationOutcome> {
     let idl_account = fetch_matching_metadata_account(client, program_id, target, IDL_SEED)?;
-    let on_chain_bytes = resolve_metadata_content_bytes(client, &idl_account.metadata)?;
+    let on_chain_bytes = resolve_metadata_content_bytes(client, &idl_account.metadata).await?;
     let on_chain_hash = idl_hash_from_bytes(&on_chain_bytes);
     let reproduced = reproduce_idl(repo_root, metadata)?;
     let reproduced_hash = reproduced.sha256.clone();
