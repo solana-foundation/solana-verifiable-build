@@ -714,6 +714,7 @@ pub fn validate_executable_verification_pair(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn upload_idl_verification_metadata(
     client: &RpcClient,
     program_id: Address,
