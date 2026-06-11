@@ -28,7 +28,7 @@ use crate::solana_program::{
 pub const IDL_SEED: &str = "idl";
 pub const IDL_VERIFICATION_SEED: &str = "idl-verification";
 
-/// Real metadata header length 
+/// Real metadata header length
 /// Generated client ignores the 5 padding bytes https://github.com/solana-program/program-metadata/blob/main/program/src/state/header.rs#L70
 const METADATA_HEADER_LENGTH: usize = 96;
 const METADATA_HEADER_PADDING: usize = 5;
