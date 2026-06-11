@@ -64,7 +64,7 @@ jobs:
           inject-env-vars: true
 
       - name: Log in to the Container registry
-        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        uses: docker/login-action@946f94de75ea52995b6aa1e54fd3e0aeed6cc573
         with:
           registry: docker.io
           username: ${{ steps.doppler.outputs.DOCKER_USERNAME }}
@@ -72,7 +72,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        uses: docker/metadata-action@3caf19fbe3db1a1a6a8bdce189e09ac0ed35d513
         with:
           images: |
              docker.io/solanafoundation/solana-verifiable-build
