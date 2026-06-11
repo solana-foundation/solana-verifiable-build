@@ -2237,7 +2237,9 @@ dependencies = [
  "base64",
  "bytes",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
+ "futures-util",
  "h2",
  "http",
  "http-body",
@@ -3052,6 +3054,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-decode-error"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c781686a18db2f942e70913f7ca15dc120ec38dcab42ff7557db2c70c625a35"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "solana-define-syscall"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3752,7 +3763,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55b54965bf0b76fa8e2b35376583efddd4d916618cfe595bf48c7d7b55a9e628"
 dependencies = [
  "num-traits",
+ "serde",
+ "serde_derive",
  "solana-address 2.6.0",
+ "solana-instruction",
  "solana-msg",
  "solana-program-error",
 ]
@@ -3887,6 +3901,7 @@ dependencies = [
  "cargo_toml",
  "clap",
  "crossbeam-channel",
+ "flate2",
  "hex",
  "indicatif",
  "lazy_static",
@@ -3911,6 +3926,7 @@ dependencies = [
  "solana-system-interface 3.2.0",
  "solana-transaction",
  "solana-transaction-status-client-types",
+ "spl-program-metadata-client",
  "tokio",
  "uuid",
 ]
@@ -4003,6 +4019,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "spl-collections"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32f0cbfc37c8bc4f36b42e54a4728fe8d43f9801c723cd4a9b541b6455438ea6"
+dependencies = [
+ "borsh",
+]
+
+[[package]]
 name = "spl-discriminator"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4065,6 +4090,25 @@ dependencies = [
  "solana-pubkey 3.0.0",
  "solana-zk-sdk",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "spl-program-metadata-client"
+version = "0.0.0"
+source = "git+https://github.com/solana-program/program-metadata?rev=b774ba1104e1f5e89ff8a6497f8a742257d012f3#b774ba1104e1f5e89ff8a6497f8a742257d012f3"
+dependencies = [
+ "borsh",
+ "num-derive",
+ "num-traits",
+ "solana-account",
+ "solana-account-info",
+ "solana-address 2.6.0",
+ "solana-cpi",
+ "solana-decode-error",
+ "solana-instruction",
+ "solana-program-error",
+ "spl-collections",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

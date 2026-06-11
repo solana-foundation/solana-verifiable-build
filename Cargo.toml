@@ -26,12 +26,13 @@ cargo-lock = "11.0.1" # missing in workspace
 cargo_toml = "0.22" # missing in workspace
 clap = "2.33.1" # version of v1.18 does not support derive
 crossbeam-channel = "0.5.11"
+flate2 = "1.0"
 hex = "0.4.3"
 indicatif = "0.18.4"
 lazy_static = "1.4.0"
 pathdiff = "0.2.0" # missing in workspace
 regex = "1.11.1"
-reqwest = { version = "0.13.3", features = ["json"] }
+reqwest = { version = "0.13.3", features = ["blocking","json"] }
 serde = { version = "1.0.195", features = ["derive"] }
 serde_json = "1.0.111"
 sha256 = "1.1.1" # missing in workspace
@@ -47,9 +48,10 @@ solana-loader-v3-interface = "6.1"
 solana-rpc-client = "=3.1.9"
 solana-rpc-client-api = "=3.1.9"
 solana-sdk-ids = "3.1.0"
-solana-system-interface = "3.2"
+solana-system-interface = { version = "3.2", features = ["bincode"] }
 solana-transaction = { version = "=3.1.0", features = ["bincode"] }
 solana-transaction-status-client-types = "=3.1.9"
+spl-program-metadata-client = { git = "https://github.com/solana-program/program-metadata", rev = "b774ba1104e1f5e89ff8a6497f8a742257d012f3" }
 tokio = { version = "1.52.3", features = ["full"] }
 
 [dependencies.uuid]

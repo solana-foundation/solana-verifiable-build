@@ -30,16 +30,24 @@ use std::{
 };
 use uuid::Uuid;
 pub mod api;
+pub mod idl;
 #[rustfmt::skip]
 pub mod image_config;
 pub mod solana_program;
+use idl::{
+    compare_executable_verification_pair, fetch_idl_verification_metadata, idl_metadata_from_cli,
+    print_executable_verification_pair_match, print_idl_verification_outcome,
+    select_metadata_target, upload_idl_verification_metadata,
+    validate_executable_verification_identity, verify_idl_against_on_chain,
+    IdlVerificationMetadata, IDL_VERIFICATION_SEED,
+};
 use image_config::IMAGE_MAP;
 
 #[cfg(test)]
 mod test;
 
 use crate::solana_program::{
-    account_initialized_or_err, compose_transaction, find_build_params_pda, get_all_pdas_available,
+    account_initialized_or_err, compose_transaction, find_build_params_pda,get_address_from_keypair_or_config, get_all_pdas_available,
     get_program_pda, process_close, resolve_rpc_url, upload_program_verification_data,
     validate_config_and_keypair, InputParams, OtterBuildParams, OtterVerifyInstructions,
 };
@@ -278,7 +286,56 @@ async fn main() -> anyhow::Result<()> {
             .arg(Arg::with_name("skip-build")
                 .long("skip-build")
                 .help("Skip building and verification, only upload the PDA")
-                .takes_value(false)))
+                .takes_value(false))
+            .arg(Arg::with_name("idl-path")
+                .long("idl-path")
+                .takes_value(true)
+                .help("Also verify and upload IDL provenance for this repo-relative IDL path")))
+        .subcommand(SubCommand::with_name("idl")
+            .about("Verify and publish program IDL provenance through program-metadata")
+            .setting(AppSettings::SubcommandRequiredElseHelp)
+            .subcommand(SubCommand::with_name("verify")
+                .about("Verify an existing IDL verification metadata account")
+                .arg(Arg::with_name("program-id")
+                    .long("program-id")
+                    .takes_value(true)
+                    .required(true)
+                    .help("The Program ID whose IDL should be verified"))
+                .arg(Arg::with_name("authority")
+                    .long("authority")
+                    .takes_value(true)
+                    .help("Metadata authority to verify. Omit to use the canonical upgrade authority.")))
+            .subcommand(SubCommand::with_name("verify-and-upload")
+                .about("Verify an IDL and upload idl-verification metadata after success")
+                .arg(Arg::with_name("program-id")
+                    .long("program-id")
+                    .takes_value(true)
+                    .required(true)
+                    .help("The Program ID whose IDL should be verified"))
+                .arg(Arg::with_name("repo-url")
+                    .long("repo-url")
+                    .takes_value(true)
+                    .required(true)
+                    .help("The HTTPS URL of the repo containing the IDL source"))
+                .arg(Arg::with_name("commit-hash")
+                    .long("commit-hash")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Commit hash to checkout for IDL reproduction"))
+                .arg(Arg::with_name("idl-path")
+                    .long("idl-path")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Repo-relative path to the IDL bytes"))
+                .arg(Arg::with_name("skip-prompt")
+                    .short("y")
+                    .long("skip-prompt")
+                    .help("Skip the prompt to write IDL verification metadata on chain"))
+                .arg(Arg::with_name("keypair")
+                    .short("k")
+                    .long("keypair")
+                    .takes_value(true)
+                    .help("Optionally specify a keypair to use for uploading IDL verification metadata"))))
         .subcommand(SubCommand::with_name("export-pda-tx")
             .about("Export the transaction as base58 for use with Squads")
             .arg(Arg::with_name("uploader")
@@ -407,11 +464,15 @@ async fn main() -> anyhow::Result<()> {
     // Validate configuration early if custom config is provided
     let config_path = matches.value_of("config").map(|s| s.to_string());
     if config_path.is_some() {
-        // Check if verify-from-repo subcommand has a keypair parameter
-        let keypair_path = if let ("verify-from-repo", Some(sub_m)) = matches.subcommand() {
-            sub_m.value_of("keypair").map(|s| s.to_string())
-        } else {
-            None
+        let keypair_path = match matches.subcommand() {
+            ("verify-from-repo", Some(sub_m)) => sub_m.value_of("keypair").map(|s| s.to_string()),
+            ("idl", Some(idl_m)) => match idl_m.subcommand() {
+                ("verify-and-upload", Some(sub_m)) => {
+                    sub_m.value_of("keypair").map(|s| s.to_string())
+                }
+                _ => None,
+            },
+            _ => None,
         };
         validate_config_and_keypair(config_path.as_deref(), keypair_path.as_deref())?;
     }
@@ -522,6 +583,8 @@ async fn main() -> anyhow::Result<()> {
                 .collect();
 
             let commit_hash = get_commit_hash(sub_m, &repo_url)?;
+            let idl_metadata =
+                idl_metadata_from_cli(&repo_url, &commit_hash, sub_m.value_of("idl-path"))?;
 
             println!("Skipping prompt: {skip_prompt}");
             verify_from_repo(
@@ -542,6 +605,7 @@ async fn main() -> anyhow::Result<()> {
                 path_to_keypair,
                 compute_unit_price,
                 skip_build,
+                idl_metadata,
                 &mut container_id,
                 &mut temp_dir,
                 &check_signal,
@@ -549,6 +613,153 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
+        ("idl", Some(idl_m)) => match idl_m.subcommand() {
+            ("verify", Some(sub_m)) => {
+                let program_id = Address::try_from(sub_m.value_of("program-id").unwrap())?;
+                let authority = sub_m
+                    .value_of("authority")
+                    .map(Address::try_from)
+                    .transpose()?;
+                let target = select_metadata_target(&connection, &program_id, authority)?;
+                let (verification_account, idl_metadata) =
+                    fetch_idl_verification_metadata(&connection, &program_id, &target)?;
+
+                let (_, build_params) = get_program_pda(
+                    &connection,
+                    &program_id,
+                    Some(target.authority.to_string()),
+                    config_path.clone(),
+                )
+                .await?;
+                validate_executable_verification_identity(
+                    &build_params,
+                    &program_id,
+                    &target.authority,
+                )?;
+                let executable_pair =
+                    compare_executable_verification_pair(&build_params, &idl_metadata);
+
+                let base_name = get_basename(&idl_metadata.repo_url)?;
+                let (verify_tmp_root_path, verify_dir) = clone_repo_and_checkout(
+                    &idl_metadata.repo_url,
+                    false,
+                    &base_name,
+                    Some(idl_metadata.commit.clone()),
+                    &mut temp_dir,
+                )?;
+
+                let verification_result = (|| -> anyhow::Result<()> {
+                    let outcome = verify_idl_against_on_chain(
+                        &connection,
+                        &program_id,
+                        &target,
+                        Path::new(&verify_tmp_root_path),
+                        &idl_metadata,
+                        verification_account.address,
+                    )?;
+                    print_idl_verification_outcome(&outcome);
+                    print_executable_verification_pair_match(&executable_pair);
+                    ensure!(
+                        outcome.success,
+                        "IDL hash mismatch for program {}",
+                        program_id
+                    );
+                    ensure!(
+                        executable_pair.success(),
+                        "IDL verification repo and commit do not match program verification for program {}",
+                        program_id
+                    );
+                    Ok(())
+                })();
+
+                cleanup_verify_dir(&verify_dir)?;
+                verification_result
+            }
+            ("verify-and-upload", Some(sub_m)) => {
+                let program_id = Address::try_from(sub_m.value_of("program-id").unwrap())?;
+                let repo_url = sub_m.value_of("repo-url").unwrap().to_string();
+                let commit_hash = sub_m.value_of("commit-hash").unwrap().to_string();
+                let idl_metadata =
+                    idl_metadata_from_cli(&repo_url, &commit_hash, sub_m.value_of("idl-path"))?
+                        .ok_or_else(|| anyhow!("IDL metadata flags are required"))?;
+                let skip_prompt = sub_m.is_present("skip-prompt");
+                let path_to_keypair = sub_m.value_of("keypair").map(|s| s.to_string());
+                let compute_unit_price = matches
+                    .value_of("compute-unit-price")
+                    .unwrap()
+                    .parse::<u64>()
+                    .unwrap_or(100000);
+
+                let signer_pubkey = get_address_from_keypair_or_config(
+                    path_to_keypair.as_ref(),
+                    config_path.clone(),
+                )?;
+                let target = select_metadata_target(&connection, &program_id, Some(signer_pubkey))?;
+                let (_, build_params) = get_program_pda(
+                    &connection,
+                    &program_id,
+                    Some(target.authority.to_string()),
+                    config_path.clone(),
+                )
+                .await?;
+                validate_executable_verification_identity(
+                    &build_params,
+                    &program_id,
+                    &target.authority,
+                )?;
+                let executable_pair =
+                    compare_executable_verification_pair(&build_params, &idl_metadata);
+
+                let base_name = get_basename(&repo_url)?;
+                let (verify_tmp_root_path, verify_dir) = clone_repo_and_checkout(
+                    &repo_url,
+                    false,
+                    &base_name,
+                    Some(commit_hash.clone()),
+                    &mut temp_dir,
+                )?;
+
+                let verification_result = (|| -> anyhow::Result<()> {
+                    let verification_account =
+                        target.pda_for_seed(&program_id, IDL_VERIFICATION_SEED);
+                    let outcome = verify_idl_against_on_chain(
+                        &connection,
+                        &program_id,
+                        &target,
+                        Path::new(&verify_tmp_root_path),
+                        &idl_metadata,
+                        verification_account,
+                    )?;
+                    print_idl_verification_outcome(&outcome);
+                    print_executable_verification_pair_match(&executable_pair);
+                    ensure!(
+                        outcome.success,
+                        "IDL hash mismatch for program {}",
+                        program_id
+                    );
+                    ensure!(
+                        executable_pair.success(),
+                        "IDL verification repo and commit do not match program verification for program {}",
+                        program_id
+                    );
+                    upload_idl_verification_metadata(
+                        &connection,
+                        program_id,
+                        &target,
+                        &idl_metadata,
+                        skip_prompt,
+                        path_to_keypair.clone(),
+                        compute_unit_price,
+                        config_path.clone(),
+                    )?;
+                    Ok(())
+                })();
+
+                cleanup_verify_dir(&verify_dir)?;
+                verification_result
+            }
+            _ => unreachable!(),
+        },
         ("close", Some(sub_m)) => {
             let program_id = sub_m.value_of("program-id").unwrap();
             let compute_unit_price = matches
@@ -1357,6 +1568,20 @@ fn build_args(
     ))
 }
 
+fn cleanup_verify_dir(verify_dir: &str) -> anyhow::Result<()> {
+    let cleanup_result = std::process::Command::new("rm")
+        .args(["-rf", verify_dir])
+        .output();
+
+    if let Err(err) = cleanup_result {
+        eprintln!(
+            "Failed to remove temporary directory '{}': {}",
+            verify_dir, err
+        );
+    }
+    Ok(())
+}
+
 fn clone_repo_and_checkout(
     repo_url: &str,
     current_dir: bool,
@@ -1456,6 +1681,7 @@ pub async fn verify_from_repo(
     path_to_keypair: Option<String>,
     compute_unit_price: u64,
     skip_build: bool,
+    idl_metadata: Option<IdlVerificationMetadata>,
     container_id_opt: &mut Option<String>,
     temp_dir_opt: &mut Option<String>,
     check_signal: &dyn Fn(&mut Option<String>, &mut Option<String>),
@@ -1497,8 +1723,8 @@ pub async fn verify_from_repo(
 
     let result: Result<(String, String), anyhow::Error> = if !skip_build {
         build_and_verify_repo(
-            mount_path,
-            workspace_path,
+            mount_path.clone(),
+            workspace_path.clone(),
             base_image.clone(),
             bpf_flag,
             arch.clone(),
@@ -1513,13 +1739,7 @@ pub async fn verify_from_repo(
         Ok(("skipped".to_string(), "skipped".to_string()))
     };
 
-    // Cleanup no matter the result
-    std::process::Command::new("rm")
-        .args(["-rf", &verify_dir])
-        .output()?;
-
-    // Handle the result
-    match result {
+    let verification_result = match result {
         Ok((build_hash, program_hash)) => {
             if !skip_build {
                 println!("Executable Program Hash from repo: {build_hash}");
@@ -1546,6 +1766,62 @@ pub async fn verify_from_repo(
                 )
                 .await?;
 
+                if let Some(idl_metadata) = idl_metadata.as_ref() {
+                    let signer_pubkey = get_address_from_keypair_or_config(
+                        path_to_keypair.as_ref(),
+                        config_path.clone(),
+                    )?;
+                    let target =
+                        select_metadata_target(connection, &program_id, Some(signer_pubkey))?;
+                    let (_, build_params) = get_program_pda(
+                        connection,
+                        &program_id,
+                        Some(target.authority.to_string()),
+                        config_path.clone(),
+                    )
+                    .await?;
+                    validate_executable_verification_identity(
+                        &build_params,
+                        &program_id,
+                        &target.authority,
+                    )?;
+                    let executable_pair =
+                        compare_executable_verification_pair(&build_params, idl_metadata);
+
+                    let verification_account =
+                        target.pda_for_seed(&program_id, IDL_VERIFICATION_SEED);
+                    let outcome = verify_idl_against_on_chain(
+                        connection,
+                        &program_id,
+                        &target,
+                        Path::new(&verify_tmp_root_path),
+                        idl_metadata,
+                        verification_account,
+                    )?;
+                    print_idl_verification_outcome(&outcome);
+                    print_executable_verification_pair_match(&executable_pair);
+                    ensure!(
+                        outcome.success,
+                        "IDL hash mismatch for program {}",
+                        program_id
+                    );
+                    ensure!(
+                        executable_pair.success(),
+                        "IDL verification repo and commit do not match program verification for program {}",
+                        program_id
+                    );
+                    upload_idl_verification_metadata(
+                        connection,
+                        program_id,
+                        &target,
+                        idl_metadata,
+                        skip_prompt,
+                        path_to_keypair.clone(),
+                        compute_unit_price,
+                        config_path.clone(),
+                    )?;
+                }
+
                 Ok(())
             } else {
                 println!("Program hashes do not match ❌");
@@ -1555,7 +1831,20 @@ pub async fn verify_from_repo(
             }
         }
         Err(e) => Err(anyhow!("Error verifying program: {:?}", e)),
+    };
+
+    let cleanup_result = std::process::Command::new("rm")
+        .args(["-rf", &verify_dir])
+        .output();
+
+    if let Err(err) = cleanup_result {
+        eprintln!(
+            "Failed to remove temporary directory '{}': {}",
+            verify_dir, err
+        );
     }
+
+    verification_result
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1649,23 +1938,68 @@ fn get_container_active_toolchain(container_id: &str) -> anyhow::Result<String> 
 /// Reads Solana version from `[workspace.metadata.cli]` solana = "x.y.z" in the root Cargo.toml
 pub fn get_solana_version_from_workspace_metadata(workspace_root: &str) -> Option<(u32, u32, u32)> {
     let path = format!("{}/Cargo.toml", workspace_root.trim_end_matches('/'));
-    let manifest = Manifest::from_path(&path).ok()?;
-    if let Some(Value::String(version)) = manifest
-        .workspace
-        .as_ref()
-        .and_then(|w| w.metadata.as_ref())
-        .and_then(|m| m.get("cli"))
-        .and_then(|cli| cli.get("solana"))
-    {
-        let parts: Vec<&str> = version.split('.').collect();
-        if parts.len() == 3 {
-            let major = parts[0].parse::<u32>().ok()?;
-            let minor = parts[1].parse::<u32>().ok()?;
-            let patch = parts[2].parse::<u32>().ok()?;
-            return Some((major, minor, patch));
+    let manifest = Manifest::from_path(&path).ok();
+
+    let version_from_manifest = manifest.as_ref().and_then(|manifest| {
+        manifest
+            .workspace
+            .as_ref()
+            .and_then(|w| w.metadata.as_ref())
+            .and_then(|m| m.get("cli"))
+            .and_then(|cli| cli.get("solana"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+            .or_else(|| {
+                manifest
+                    .package
+                    .as_ref()
+                    .and_then(|pkg| pkg.metadata.as_ref())
+                    .and_then(|m| m.get("cli"))
+                    .and_then(|cli| cli.get("solana"))
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned)
+            })
+    });
+
+    if let Some(parsed) = version_from_manifest.and_then(|version| parse_semver_triplet(&version)) {
+        return Some(parsed);
+    }
+
+    let contents = std::fs::read_to_string(path).ok()?;
+    let mut in_cli_section = false;
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_cli_section = matches!(
+                trimmed,
+                "[workspace.metadata.cli]" | "[package.metadata.cli]"
+            );
+            continue;
+        }
+
+        if in_cli_section && trimmed.starts_with("solana") {
+            let (_, value) = trimmed.split_once('=')?;
+            let version = value.trim().trim_matches('"');
+            if let Some(parsed) = parse_semver_triplet(version) {
+                return Some(parsed);
+            }
         }
     }
     None
+}
+
+fn parse_semver_triplet(version: &str) -> Option<(u32, u32, u32)> {
+    let parts: Vec<&str> = version.split('.').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+
+    Some((
+        parts[0].parse::<u32>().ok()?,
+        parts[1].parse::<u32>().ok()?,
+        parts[2].parse::<u32>().ok()?,
+    ))
 }
 
 /// Tries solana-program, then solana-program-error, then solana-account-info in Cargo.lock

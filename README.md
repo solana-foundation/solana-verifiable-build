@@ -55,6 +55,62 @@ solana-verify remote submit-job --program-id $PROGRAM_ID --uploader $THE_PUBKEY_
 
 For detailed instructions and best practices, please refer to the [official Solana documentation on verified builds](https://solana.com/docs/programs/verified-builds).
 
+## IDL Verification
+
+`solana-verify` can verify program IDLs published through the
+`program-metadata` `"idl"` seed and publish provenance metadata through the
+matching `"idl-verification"` seed.
+
+IDL verification metadata uses this JSON shape:
+
+```json
+{
+  "kind": "idl-verification",
+  "version": 1,
+  "repo_url": "https://github.com/example/program",
+  "commit": "7e5f4b7e7d13c37f2b8470b5f0f9f0f10c5c7a1d",
+  "path": "target/idl/my_program.json"
+}
+```
+
+The verifier hashes the IDL artifact bytes directly, so formatting and key ordering are part of the verified artifact.
+
+Verify an existing on-chain IDL verification record:
+
+```bash
+solana-verify idl verify --program-id $PROGRAM_ID
+
+# Verify a non-canonical third-party IDL record
+solana-verify idl verify --program-id $PROGRAM_ID --authority $AUTHORITY
+```
+
+Verify an IDL and upload `"idl-verification"` metadata after success:
+
+```bash
+solana-verify idl verify-and-upload \
+  --program-id $PROGRAM_ID \
+  --repo-url https://github.com/example/program \
+  --commit-hash 7e5f4b7e7d13c37f2b8470b5f0f9f0f10c5c7a1d \
+  --idl-path target/idl/my_program.json \
+  -k ~/.config/solana/id.json
+```
+
+`verify-from-repo` can do executable and IDL verification in one flow:
+
+```bash
+solana-verify verify-from-repo \
+  --program-id $PROGRAM_ID \
+  --commit-hash $COMMIT \
+  --idl-path target/idl/my_program.json \
+  https://github.com/example/program
+```
+
+If the signer is the program upgrade authority, the CLI writes the canonical
+`[program_id, "idl-verification"]` metadata account. Otherwise it writes the
+non-canonical `[program_id, signer, "idl-verification"]` account. The matching
+`"idl"` account and executable verification PDA must use the same metadata
+authority, repository URL, and commit.
+
 ## Security Considerations
 
 While verified builds enhance transparency, they should not be considered a complete security solution. Always:

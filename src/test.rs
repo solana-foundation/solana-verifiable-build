@@ -3,16 +3,50 @@ mod tests {
     use regex::Regex;
     use std::io::Write;
     use std::process::Stdio;
+    use std::sync::OnceLock;
+
+    fn binary_path() -> anyhow::Result<&'static str> {
+        static BINARY_PATH: OnceLock<Result<String, String>> = OnceLock::new();
+
+        let path = BINARY_PATH.get_or_init(|| {
+            let binary_path = "./target/debug/solana-verify";
+            let output = std::process::Command::new("cargo")
+                .args(["build", "--bin", "solana-verify", "--locked"])
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .output()
+                .map_err(|err| format!("Failed to build solana-verify binary for tests: {err}"))?;
+
+            if !output.status.success() {
+                return Err("cargo build --bin solana-verify failed".to_string());
+            }
+
+            if !std::path::Path::new(binary_path).exists() {
+                return Err(format!(
+                    "Binary not found at {binary_path} after cargo build"
+                ));
+            }
+
+            Ok(binary_path.to_string())
+        });
+
+        match path {
+            Ok(path) => Ok(path.as_str()),
+            Err(err) => Err(anyhow::anyhow!(err.clone())),
+        }
+    }
+
+    fn extract_hash_from_output(output: &str) -> anyhow::Result<String> {
+        let re = Regex::new(r"([a-f0-9]{64})").context("Failed to compile hash regex")?;
+        re.captures_iter(output)
+            .last()
+            .and_then(|captures| captures.get(1))
+            .map(|matched| matched.as_str().to_string())
+            .context("Could not find hash in command output")
+    }
 
     fn test_verify_program_hash_helper(expected_hash: &str, args: &[&str]) -> anyhow::Result<()> {
-        // If the target/debug/solana-verify file does not exist, return a clear error
-        let binary_path = "./target/debug/solana-verify";
-        if !std::path::Path::new(binary_path).exists() {
-            anyhow::bail!(
-                "Binary not found at {binary_path}\n\
-                 Please build it first by running: cargo build"
-            );
-        }
+        let binary_path = binary_path()?;
 
         let mut child = std::process::Command::new(binary_path)
             .args(args)
@@ -77,7 +111,8 @@ mod tests {
         executable_path: &str,
         expected_hash: &str,
     ) -> anyhow::Result<()> {
-        let child = std::process::Command::new("./target/debug/solana-verify")
+        let binary_path = binary_path()?;
+        let child = std::process::Command::new(binary_path)
             .args(build_args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -95,7 +130,7 @@ mod tests {
         }
 
         let hash_args = ["get-executable-hash", executable_path];
-        let child = std::process::Command::new("./target/debug/solana-verify")
+        let child = std::process::Command::new(binary_path)
             .args(hash_args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -112,7 +147,7 @@ mod tests {
             anyhow::bail!("Command failed: {}", error);
         }
 
-        let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let hash = extract_hash_from_output(&String::from_utf8_lossy(&output.stdout))?;
         assert_eq!(
             hash, expected_hash,
             "Program hash {} does not match expected value {}",
@@ -240,8 +275,9 @@ mod tests {
 
     #[test]
     fn test_verify_from_image() -> anyhow::Result<()> {
+        let binary_path = binary_path()?;
         let args: Vec<&str> = "verify-from-image -e examples/hello_world/target/deploy/hello_world.so -i ellipsislabs/hello_world_verifiable_build:latest -p 2ZrriTQSVekoj414Ynysd48jyn4AX6ZF4TTJRqHfbJfn".split(" ").collect();
-        let child = std::process::Command::new("./target/debug/solana-verify")
+        let child = std::process::Command::new(binary_path)
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -262,11 +298,12 @@ mod tests {
 
     #[test]
     fn test_get_program_hash_legacy_loader() -> anyhow::Result<()> {
+        let binary_path = binary_path()?;
         const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
         const EXPECTED_HASH: &str =
             "d5a1793250f0f22efc7174bd8399570636e667655179642b2e90b0fb80e09106";
         let args = ["get-program-hash", SPL_TOKEN_PROGRAM_ID];
-        let child = std::process::Command::new("./target/debug/solana-verify")
+        let child = std::process::Command::new(binary_path)
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -287,7 +324,7 @@ mod tests {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let hash = stdout.trim();
+        let hash = extract_hash_from_output(&stdout)?;
         assert_eq!(
             hash, EXPECTED_HASH,
             "Program hash {} does not match expected value {}",

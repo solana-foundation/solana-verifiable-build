@@ -11,7 +11,7 @@ use solana_rpc_client_api::{
 };
 use solana_transaction::{Message, Transaction};
 use std::{
-    io::{self, Read, Write},
+    io::{self, Write},
     str::FromStr,
 };
 
@@ -74,7 +74,7 @@ pub struct OtterBuildParams {
     pub commit: String,
     pub args: Vec<String>,
     pub deployed_slot: u64,
-    bump: u8,
+    pub bump: u8,
 }
 impl std::fmt::Display for OtterBuildParams {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -90,13 +90,31 @@ impl std::fmt::Display for OtterBuildParams {
 }
 
 pub fn prompt_user_input(message: &str) -> bool {
-    let mut buffer = [0; 1];
+    let mut input = String::new();
     print!("{message}");
     let _ = io::stdout().flush();
     io::stdin()
-        .read_exact(&mut buffer)
+        .read_line(&mut input)
         .expect("Unable to read user input");
-    matches!(buffer[0] as char, 'Y' | 'y')
+    is_yes_input(&input)
+}
+
+pub fn is_yes_input(input: &str) -> bool {
+    matches!(input.trim(), "Y" | "y")
+}
+
+#[cfg(test)]
+mod prompt_tests {
+    use super::is_yes_input;
+
+    #[test]
+    fn parses_yes_prompt_lines() {
+        assert!(is_yes_input("y\n"));
+        assert!(is_yes_input("Y\n"));
+        assert!(is_yes_input("y"));
+        assert!(!is_yes_input("\n"));
+        assert!(!is_yes_input("n\n"));
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
@@ -132,12 +150,14 @@ fn create_ix_data(params: &InputParams, ix: &OtterVerifyInstructions) -> Vec<u8>
     data
 }
 
-fn get_keypair_from_path(path: &str) -> anyhow::Result<Keypair> {
+pub fn get_keypair_from_path(path: &str) -> anyhow::Result<Keypair> {
     solana_clap_utils::keypair::keypair_from_path(&Default::default(), path, "keypair", false)
         .map_err(|err| anyhow!("Failed to load keypair from path '{}'. Please check that the file exists and contains a valid Solana keypair.\nError: {}", path, err))
 }
 
-fn get_user_config_with_path(config_path: Option<String>) -> anyhow::Result<(Keypair, RpcClient)> {
+pub fn get_user_config_with_path(
+    config_path: Option<String>,
+) -> anyhow::Result<(Keypair, RpcClient)> {
     let cli_config: Config = match config_path {
         Some(config_file) => Config::load(&config_file).map_err(|err| {
             anyhow!(
