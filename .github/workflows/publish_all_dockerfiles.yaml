@@ -15,7 +15,7 @@ jobs:
     outputs:
       versions: ${{ steps.set-matrix.outputs.versions }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: set-matrix
@@ -52,7 +52,7 @@ jobs:
         run: echo "Pushing Docker image for version ${{ matrix.version }}"
 
       - name: Check out the repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - uses: dopplerhq/secrets-fetch-action@v2.0.0
         id: doppler
@@ -64,7 +64,7 @@ jobs:
           inject-env-vars: true
 
       - name: Log in to the Container registry
-        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        uses: docker/login-action@3864d6aed8ff134b2ed894ce00c87695c709c870
         with:
           registry: docker.io
           username: ${{ steps.doppler.outputs.DOCKER_USERNAME }}
@@ -72,7 +72,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        uses: docker/metadata-action@020b7354dd55a28effcab0f3b19639fe24d3f58b
         with:
           images: |
              docker.io/solanafoundation/solana-verifiable-build

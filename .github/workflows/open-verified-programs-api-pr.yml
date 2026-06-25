@@ -52,7 +52,7 @@ jobs:
           inject-env-vars: true
 
       - name: Checkout API repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: otter-sec/solana-verified-programs-api
           token: ${{ steps.doppler.outputs.SOLANA_VERIFIED_PROGRAMS_API_PAT }}

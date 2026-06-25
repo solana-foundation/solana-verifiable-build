@@ -19,7 +19,7 @@ jobs:
           doppler-config: ${{ vars.DOPPLER_CONFIG_CI || 'stg_github' }}
           inject-env-vars: false
 
-      - uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+      - uses: docker/login-action@3864d6aed8ff134b2ed894ce00c87695c709c870
         with:
           registry: docker.io
           username: ${{ steps.doppler.outputs.DOCKER_USERNAME }}
