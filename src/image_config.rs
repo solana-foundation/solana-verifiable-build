@@ -285,6 +285,10 @@ lazy_static! {
         m.insert((3, 1, 12), "sha256:5d7b60cdda413d3a482b29f988e434606e206556590d1175cbee69a2728ddfc6");
         m.insert((3, 1, 13), "sha256:1a0ea3dd15017e57e9b17d67267e7d2d7ab4f083499f3f29c847ddd54f01db31");
         m.insert((3, 1, 14), "sha256:f6b78c98ddb1774af9cf1b5ca00ccff4dac002eded106b4d44560c2c6be4188d");
+        m.insert((4, 0, 0), "sha256:0b4e3716fad9ca4b4aac3e3f977f43aad93a18c22296c0c0f44fc22e644bdd68");
+        m.insert((4, 0, 1), "sha256:6c73adc767ee7ff212f2532d4695472b12f3d4ac20aea3db22b89d8c614dac50");
+        m.insert((4, 0, 2), "sha256:1c2a8ddf40e4b59dae120826224b0ed3a84cb1a348e52febf34210c3c6dee0ea");
+        m.insert((4, 0, 3), "sha256:588d0c6f45c2faa4456c7b8279897d8af8c6cd17e9613bb8ddf622a820039eb2");
         m
     };
 }
