@@ -96,10 +96,13 @@ FROM --platform=linux/amd64 rust@{RUST_VERSION_PLACEHOLDER}
 RUN apt-get update && apt-get install -qy git gnutls-bin curl ca-certificates
 {with_pinned_installer(f"https://release.anza.xyz/{AGAVE_VERSION_PLACEHOLDER}/install")}
 ENV PATH="/root/.local/share/solana/install/active_release/bin:$PATH"
-# Call cargo build-sbf to trigger installation of associated platform tools
-RUN cargo init temp --edition 2021 && \\
+# Call cargo test-sbf to trigger installation of associated platform tools
+RUN cargo init --lib temp --edition 2021 && \\
     cd temp && \\
-    cargo build-sbf && \\
+    echo "[lib]" >> Cargo.toml && \\
+    echo 'crate-type = ["cdylib", "lib"]' >> Cargo.toml && \\
+    cargo test-sbf && \\
+    cd ../ && \\
     rm -rf temp
 WORKDIR /build
 

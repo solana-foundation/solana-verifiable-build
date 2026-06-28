@@ -8,10 +8,13 @@ RUN curl -sSfL "https://release.anza.xyz/v1.18.25/install" -o /tmp/solana_instal
     rm -f /tmp/solana_install.sh
 
 ENV PATH="/root/.local/share/solana/install/active_release/bin:$PATH"
-# Call cargo build-sbf to trigger installation of associated platform tools
-RUN cargo init temp --edition 2021 && \
+# Call cargo test-sbf to trigger installation of associated platform tools
+RUN cargo init --lib temp --edition 2021 && \
     cd temp && \
-    cargo build-sbf && \
+    echo "[lib]" >> Cargo.toml && \
+    echo 'crate-type = ["cdylib", "lib"]' >> Cargo.toml && \
+    cargo test-sbf && \
+    cd ../ && \
     rm -rf temp
 WORKDIR /build
 
