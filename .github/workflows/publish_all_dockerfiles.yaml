@@ -15,7 +15,7 @@ jobs:
     outputs:
       versions: ${{ steps.set-matrix.outputs.versions }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: set-matrix
@@ -52,7 +52,7 @@ jobs:
         run: echo "Pushing Docker image for version ${{ matrix.version }}"
 
       - name: Check out the repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - uses: dopplerhq/secrets-fetch-action@v2.0.0
         id: doppler
@@ -92,7 +92,7 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
       - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@v4.1.0
         with:
           subject-name: index.docker.io/solanafoundation/solana-verifiable-build
           subject-digest: ${{ steps.push.outputs.digest }}
