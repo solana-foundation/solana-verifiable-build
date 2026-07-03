@@ -58,21 +58,21 @@ jobs:
           token: ${{ steps.doppler.outputs.SOLANA_VERIFIED_PROGRAMS_API_PAT }}
           ref: master
 
-      - name: Update version in api/Dockerfile
+      - name: Update version in Dockerfile
         env:
           TAG: ${{ steps.meta.outputs.tag }}
         run: |
           set -euo pipefail
 
-          if ! grep -q 'solana-foundation/solana-verifiable-build --tag v[0-9]' api/Dockerfile; then
-            echo "::error::Expected solana-verifiable-build install line not found in api/Dockerfile"
+          if ! grep -q 'solana-foundation/solana-verifiable-build --tag v[0-9]' Dockerfile; then
+            echo "::error::Expected solana-verifiable-build install line not found in Dockerfile"
             exit 1
           fi
 
-          sed -i.bak -E "s|(solana-foundation/solana-verifiable-build --tag )v[0-9]+\.[0-9]+\.[0-9]+|\1${TAG}|" api/Dockerfile
-          rm -f api/Dockerfile.bak
+          sed -i.bak -E "s|(solana-foundation/solana-verifiable-build --tag )v[0-9]+\.[0-9]+\.[0-9]+|\1${TAG}|" Dockerfile
+          rm -f Dockerfile.bak
 
-          git diff -- api/Dockerfile || true
+          git diff -- Dockerfile || true
 
       - name: Create pull request in API repo
         uses: peter-evans/create-pull-request@v8
@@ -81,12 +81,12 @@ jobs:
           commit-message: 'Update solana-verify to ${{ steps.meta.outputs.tag }}'
           title: 'Update solana-verify to ${{ steps.meta.outputs.tag }}'
           body: |
-            This PR updates the solana-verify version in `api/Dockerfile` to **${{ steps.meta.outputs.tag }}**.
+            This PR updates the solana-verify version in `Dockerfile` to **${{ steps.meta.outputs.tag }}**.
 
             Triggered from a release in [${{ github.repository }}](https://github.com/${{ github.repository }}).
 
             Before merging, please run:
-            `docker build -f api/Dockerfile .`
+            `docker build -f Dockerfile .`
           branch: update/solana-verify-${{ steps.meta.outputs.tag }}
           delete-branch: true
           base: master

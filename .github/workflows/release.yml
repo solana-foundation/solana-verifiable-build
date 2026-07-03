@@ -37,8 +37,8 @@ jobs:
       skip_publish_check: ${{ steps.validate.outputs.skip_publish_check }}
       default_branch: ${{ steps.validate.outputs.default_branch }}
       release_branch: ${{ steps.validate.outputs.release_branch }}
-      release_commit: ${{ steps.commit.outputs.release_commit }}
-      pr_url: ${{ steps.open_pr.outputs.pr_url }}
+      release_commit: ${{ steps.resolve_commit.outputs.release_commit }}
+      pr_url: ${{ steps.cpr.outputs.pull-request-url }}
     steps:
       - name: Checkout default branch
         uses: actions/checkout@v6
@@ -182,74 +182,62 @@ jobs:
           path: source-snapshot.tar.gz
           if-no-files-found: error
 
-      - name: Commit release bump to release branch
-        id: commit
+      - name: Reuse release commit (recovery mode)
+        id: commit_recovery
+        if: ${{ steps.validate.outputs.dry_run != 'true' && steps.validate.outputs.skip_publish_check == 'true' }}
         env:
-          DRY_RUN: ${{ steps.validate.outputs.dry_run }}
-          SKIP_PUBLISH_CHECK: ${{ steps.validate.outputs.skip_publish_check }}
-          EXISTING_TAG_SHA: ${{ steps.validate.outputs.existing_tag_sha }}
           RELEASE_BRANCH: ${{ steps.validate.outputs.release_branch }}
-          VERSION: ${{ steps.validate.outputs.version }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "Recovery mode enabled; reusing existing ${RELEASE_BRANCH} commit"
+          if git fetch origin "${RELEASE_BRANCH}" --depth=1; then
+            echo "release_commit=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+          else
+            echo "Notice: release branch ${RELEASE_BRANCH} not found on origin; falling back to existing tag if available"
+          fi
 
+      - name: Create signed release commit and PR
+        id: cpr
+        if: ${{ steps.validate.outputs.dry_run != 'true' && steps.validate.outputs.skip_publish_check != 'true' && steps.validate.outputs.existing_tag_sha == '' }}
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ github.token }}
+          sign-commits: true
+          branch: ${{ steps.validate.outputs.release_branch }}
+          base: ${{ steps.validate.outputs.default_branch }}
+          add-paths: |
+            Cargo.toml
+            Cargo.lock
+          commit-message: "chore: release v${{ steps.validate.outputs.version }}"
+          title: "chore: release v${{ steps.validate.outputs.version }}"
+          body: |
+            Automated release branch for this version.
+
+            Merge this PR after the release workflow completes successfully.
+
+      - name: Resolve release commit
+        id: resolve_commit
+        env:
+          DRY_RUN: ${{ steps.validate.outputs.dry_run }}
+          RECOVERY_COMMIT: ${{ steps.commit_recovery.outputs.release_commit }}
+          EXISTING_TAG_SHA: ${{ steps.validate.outputs.existing_tag_sha }}
+          CPR_SHA: ${{ steps.cpr.outputs.pull-request-head-sha }}
+        run: |
+          set -euo pipefail
           if [[ "$DRY_RUN" == "true" ]]; then
             echo "Dry run enabled; skipping release branch push"
             echo "release_commit=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [[ "$SKIP_PUBLISH_CHECK" == "true" ]]; then
-            echo "Recovery mode enabled; reusing existing ${RELEASE_BRANCH} commit"
-            if ! git fetch origin "${RELEASE_BRANCH}" --depth=1; then
-              echo "Error: release branch ${RELEASE_BRANCH} does not exist on origin"
-              exit 1
-            fi
-            echo "release_commit=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [[ -n "$EXISTING_TAG_SHA" ]]; then
+          elif [[ -n "$EXISTING_TAG_SHA" ]]; then
             echo "Existing tag detected; reusing tagged release commit ${EXISTING_TAG_SHA}"
             echo "release_commit=${EXISTING_TAG_SHA}" >> "$GITHUB_OUTPUT"
-            exit 0
+          elif [[ -n "$RECOVERY_COMMIT" ]]; then
+            echo "release_commit=${RECOVERY_COMMIT}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$CPR_SHA" ]]; then
+            echo "release_commit=${CPR_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "Error: could not determine release commit (no release branch, existing tag, or created commit)"
+            exit 1
           fi
-
-          git checkout -B "$RELEASE_BRANCH"
-          git add Cargo.toml Cargo.lock
-          git commit -m "chore: release v${VERSION}"
-          git push --force-with-lease origin "$RELEASE_BRANCH"
-
-          echo "release_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Open or reuse release PR
-        id: open_pr
-        if: ${{ steps.validate.outputs.dry_run != 'true' && steps.validate.outputs.skip_publish_check != 'true' && steps.validate.outputs.existing_tag_sha == '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DEFAULT_BRANCH: ${{ steps.validate.outputs.default_branch }}
-          RELEASE_BRANCH: ${{ steps.validate.outputs.release_branch }}
-          VERSION: ${{ steps.validate.outputs.version }}
-        run: |
-          set -euo pipefail
-
-          PR_URL=$(gh pr list \
-            --head "$RELEASE_BRANCH" \
-            --base "$DEFAULT_BRANCH" \
-            --json url \
-            --jq '.[0].url')
-
-          if [[ -z "$PR_URL" || "$PR_URL" == "null" ]]; then
-            PR_URL=$(gh pr create \
-              --base "$DEFAULT_BRANCH" \
-              --head "$RELEASE_BRANCH" \
-              --title "chore: release v${VERSION}" \
-              --body $'Automated release branch for this version.\n\nMerge this PR after the release workflow completes successfully.')
-          fi
-
-          echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
 
   build_artifacts:
     name: Build Release Artifacts (${{ matrix.name }})
