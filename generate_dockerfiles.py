@@ -31,6 +31,7 @@ AGAVE_VERSION_PLACEHOLDER = "$AGAVE_VERSION"
 INSTALL_SHA256_PLACEHOLDER = "$INSTALL_SHA256"
 CARGO_BUILD_SBF_VERSION_PLACEHOLDER = "$CARGO_BUILD_SBF_VERSION"
 PLATFORM_TOOLS_ARGS_PLACEHOLDER = "$PLATFORM_TOOLS_ARGS"
+CARGO_INSTALL_NOTE_PLACEHOLDER = "$CARGO_INSTALL_NOTE"
 
 # Agave trains that install cargo-build-sbf from crates.io (not the full CLI).
 # One map entry per minor line, bump cargo_build_sbf_version when the train moves to a new crate.
@@ -125,7 +126,7 @@ FROM --platform=linux/amd64 rust@{RUST_VERSION_PLACEHOLDER}
 
 LABEL agave.version="{AGAVE_VERSION_PLACEHOLDER}"
 RUN apt-get update && apt-get install -qy git gnutls-bin curl ca-certificates
-RUN cargo install cargo-build-sbf --version {CARGO_BUILD_SBF_VERSION_PLACEHOLDER} --locked
+{CARGO_INSTALL_NOTE_PLACEHOLDER}RUN cargo install cargo-build-sbf --version {CARGO_BUILD_SBF_VERSION_PLACEHOLDER} --locked
 # Call cargo build-sbf to trigger installation of platform tools
 RUN cargo init temp --edition 2021 && \\
     cd temp && \\
@@ -322,12 +323,24 @@ def process_releases(releases):
             platform_tools_args = release_info.get("platform_tools_args", "").strip()
             if platform_tools_args:
                 platform_tools_args = f" {platform_tools_args}"
+            major, minor, _ = release.strip("v").split(".")
+            crate_version = release_info["cargo_build_sbf_version"]
+            if release.strip("v") != crate_version:
+                cargo_install_note = (
+                    f"# cargo-build-sbf {crate_version} is the crate pin for "
+                    f"the Agave {major}.{minor}.x train\n"
+                )
+            else:
+                cargo_install_note = ""
             dockerfile = dockerfile.replace(
                 CARGO_BUILD_SBF_VERSION_PLACEHOLDER,
-                release_info["cargo_build_sbf_version"],
+                crate_version,
             ).replace(
                 PLATFORM_TOOLS_ARGS_PLACEHOLDER,
                 platform_tools_args,
+            ).replace(
+                CARGO_INSTALL_NOTE_PLACEHOLDER,
+                cargo_install_note,
             )
 
         if os.path.exists(path):
