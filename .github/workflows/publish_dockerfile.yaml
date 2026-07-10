@@ -40,7 +40,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        uses: docker/metadata-action@703896b4f30f62d53f5530a80bcdc589a3f702bc
         with:
           images: |
             docker.io/solanafoundation/solana-verifiable-build
