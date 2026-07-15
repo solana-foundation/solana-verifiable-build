@@ -32,7 +32,7 @@ jobs:
           inject-env-vars: true
 
       - name: Log in to the Container registry
-        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        uses: docker/login-action@c66a8fcb2472d4283042d726b2a061b43b3f49ab
         with:
           registry: docker.io
           username: ${{ steps.doppler.outputs.DOCKER_USERNAME }}
