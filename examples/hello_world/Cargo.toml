@@ -16,4 +16,7 @@ default = []
 test = []
 
 [dependencies]
-solana-program = "1.14.10" 
+solana-program = "1.14.10"
+
+[workspace.metadata.cli]
+solana = "1.14.13"

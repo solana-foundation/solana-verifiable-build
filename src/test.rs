@@ -126,7 +126,7 @@ mod tests {
     fn test_phoenix_v1() -> anyhow::Result<()> {
         const EXPECTED_HASH: &str =
             "6877a5b732b3494b828a324ec846d526d962223959534dbaf4209e0da3b2d6a9";
-        let args: Vec<&str> =  "verify-from-repo -um --program-id PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY https://github.com/Ellipsis-Labs/phoenix-v1".split(" ").collect();
+        let args: Vec<&str> =  "verify-from-repo -um --program-id PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY https://github.com/Ellipsis-Labs/phoenix-v1 --base-image solanafoundation/solana-verifiable-build@sha256:9b16f14b5d1a8004a036d1b3ac5abc0431d6f8239937d247ccb5569919d89ade".split(" ").collect();
         test_verify_program_hash_helper(EXPECTED_HASH, &args)?;
         Ok(())
     }
@@ -144,7 +144,7 @@ mod tests {
     fn test_drift_v2() -> anyhow::Result<()> {
         const EXPECTED_HASH: &str =
             "febe4feb7310395adcda7166e92d41a13a383567457a6068613964b72353fa4e";
-        let args: Vec<&str> = "verify-from-repo -um --program-id dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH https://github.com/drift-labs/protocol-v2 --commit-hash 0d35029d780b5faf8b80fce84053e862802badc1 --library-name drift".split(" ").collect();
+        let args: Vec<&str> = "verify-from-repo -um --program-id dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH https://github.com/drift-labs/protocol-v2 --commit-hash 0d35029d780b5faf8b80fce84053e862802badc1 --library-name drift --base-image solanafoundation/solana-verifiable-build@sha256:43206149a565ec35da95b1a909f4714f5d5f0d8241c31df24189e517acd18467".split(" ").collect();
         test_verify_program_hash_helper(EXPECTED_HASH, &args)?;
         Ok(())
     }
@@ -153,7 +153,7 @@ mod tests {
     fn test_marginfi_v2() -> anyhow::Result<()> {
         const EXPECTED_HASH: &str =
             "890d68f48f96991016222b1fcbc2cc81b8ef2dcbf280c44fe378c523c108fad5";
-        let args: Vec<&str> = "verify-from-repo -um --program-id MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA https://github.com/mrgnlabs/marginfi-v2 --commit-hash d33e649e415c354cc2a1e3c49131725552d69ba0 --library-name marginfi".split(" ").collect();
+        let args: Vec<&str> = "verify-from-repo -um --program-id MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA https://github.com/mrgnlabs/marginfi-v2 --commit-hash d33e649e415c354cc2a1e3c49131725552d69ba0 --library-name marginfi --base-image solanafoundation/solana-verifiable-build@sha256:78df045659a84dfb1ba481ef69e6d89b0573a2d43c15cde5f371e320450cf334".split(" ").collect();
         test_verify_program_hash_helper(EXPECTED_HASH, &args)?;
         Ok(())
     }
@@ -162,7 +162,7 @@ mod tests {
     fn test_games_preset() -> anyhow::Result<()> {
         const EXPECTED_HASH: &str =
             "668ff275819d9276362c6a2636d2a392afe224296e815481b94474785f490025";
-        let args: Vec<&str> = "verify-from-repo -um --program-id MkabCfyUD6rBTaYHpgKBBpBo5qzWA2pK2hrGGKMurJt https://github.com/solana-developers/solana-game-preset --commit-hash eaf772fd1f21fe03a9974587f5680635e970be38 --mount-path program".split(" ").collect();
+        let args: Vec<&str> = "verify-from-repo -um --program-id MkabCfyUD6rBTaYHpgKBBpBo5qzWA2pK2hrGGKMurJt https://github.com/solana-developers/solana-game-preset --commit-hash eaf772fd1f21fe03a9974587f5680635e970be38 --mount-path program --base-image solanafoundation/solana-verifiable-build@sha256:4e6d3e75b2dc4d37c1278b2b6869265208e775e1397d5dc4b7bd4fc2c8dbd76f".split(" ").collect();
         test_verify_program_hash_helper(EXPECTED_HASH, &args)?;
         Ok(())
     }
@@ -171,7 +171,7 @@ mod tests {
     fn test_agave_2_1() -> anyhow::Result<()> {
         const EXPECTED_HASH: &str =
             "29e7713aa3c48e242e2847bc031fe2a03eb61aae5ecaec8728131e16934de465";
-        let args: Vec<&str> = "verify-from-repo https://github.com/Woody4618/verify-2-1 --program-id kGYz2q2WUYCXhKpgUF4AMR3seDA9eg8sbirP5dhbyhy --commit-hash e0f138fb58b669791c823f44f878cb3547a92a26".split(" ").collect();
+        let args: Vec<&str> = "verify-from-repo https://github.com/Woody4618/verify-2-1 --program-id kGYz2q2WUYCXhKpgUF4AMR3seDA9eg8sbirP5dhbyhy --commit-hash e0f138fb58b669791c823f44f878cb3547a92a26 --base-image solanafoundation/solana-verifiable-build@sha256:1e077a20f6d52a751e22470f3950a0fbae022f4db92f456bb69c6e0b1499b8a3".split(" ").collect();
         test_verify_program_hash_helper(EXPECTED_HASH, &args)?;
         Ok(())
     }
