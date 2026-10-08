@@ -949,28 +949,70 @@ pub fn build(
     let mut solana_version: Option<String> = None;
     let (mut major, mut minor, mut patch) = (0, 0, 0);
     let image: String = match base_image {
-        Some(base_image) => base_image,
+        Some(base_image) => {
+            // Resolve version from known digests/tags so cargo flag compatibility
+            // (e.g. sparse registry) still matches the selected image.
+            if let Some(version) = resolve_solana_version_from_base_image(&base_image) {
+                (major, minor, patch) = version;
+                solana_version = Some(format!("v{major}.{minor}.{patch}"));
+            }
+            base_image
+        }
         None => {
-            // Resolve Solana version: [workspace.metadata.cli] first, then Cargo.lock fallback
-            (major, minor, patch) = get_solana_version_from_workspace_metadata(&mount_path)
-                .or_else(|| get_solana_version_from_lockfile(&lockfile).ok())
-                .ok_or_else(|| {
-                    anyhow!(
-                        "Failed to determine Solana version: not found in [workspace.metadata.cli] in Cargo.toml nor in Cargo.lock"
-                    )
-                })?;
             if bpf_flag {
                 // Use this for backwards compatibility with anchor verified builds
+                (major, minor, patch) = (1, 13, 5);
                 solana_version = Some("v1.13.5".to_string());
                 "projectserum/build@sha256:75b75eab447ebcca1f471c98583d9b5d82c4be122c470852a022afcf9c98bead".to_string()
-            } else if let Some(digest) = IMAGE_MAP.get(&(major, minor, patch)) {
-                println!("Found docker image for Solana version {major}.{minor}.{patch}");
-                solana_version = Some(format!("v{major}.{minor}.{patch}"));
-                format!("solanafoundation/solana-verifiable-build@{digest}")
             } else {
-                return Err(anyhow!(
-                    "No compatible Docker image found for Solana version {major}.{minor}.{patch} \nPlease use --base-image flag to specify a compatible Docker image manually"
-                ));
+                (major, minor, patch) = if let Some(version) =
+                    get_solana_version_from_workspace_metadata(&workspace_path)
+                {
+                    version
+                } else {
+                    let lockfile_root_package = match library_name.as_deref() {
+                        None => None,
+                        Some(lib) => {
+                            let (manifest_rel, _) =
+                                find_relative_manifest_path_and_build_path(&mount_path, lib)?;
+                            let manifest_abs = PathBuf::from(&mount_path)
+                                .join(manifest_rel.trim_start_matches('/'));
+                            let Some(pkg_name) =
+                                get_pkg_name_from_cargo_toml(manifest_abs.to_str().ok_or_else(
+                                    || anyhow!("Invalid manifest path for library-name {lib}"),
+                                )?)
+                            else {
+                                return Err(anyhow!(
+                                    "Failed to resolve package name for --library-name {lib}; check the flag or set [workspace.metadata.cli] solana = \"x.y.z\""
+                                ));
+                            };
+                            Some(pkg_name)
+                        }
+                    };
+                    match get_legacy_solana_version_from_lockfile(
+                        &lockfile,
+                        lockfile_root_package.as_deref(),
+                    )? {
+                        Some(version) => version,
+                        None => {
+                            return Err(anyhow!(
+                                    "Failed to determine Solana version: set [workspace.metadata.cli] solana = \"x.y.z\" in Cargo.toml, or pass --base-image"
+                                ));
+                        }
+                    }
+                };
+                if let Some(digest) = IMAGE_MAP.get(&(major, minor, patch)) {
+                    println!("Found docker image for Solana version {major}.{minor}.{patch}");
+                    solana_version = Some(format!("v{major}.{minor}.{patch}"));
+                    format!("solanafoundation/solana-verifiable-build@{digest}")
+                } else {
+                    return Err(anyhow!(
+                        "No compatible Docker image found for Solana version {major}.{minor}.{patch}\n\
+                         Please use --base-image to specify one manually, or open an issue at \
+                         https://github.com/solana-foundation/solana-verifiable-build/issues \
+                         if this is an official Solana/Agave release we have not published yet."
+                    ));
+                }
             }
         }
     };
@@ -1037,8 +1079,8 @@ pub fn build(
     println!("Using container Rust toolchain: {active_toolchain}");
 
     // Solana v1.17 uses Rust 1.73, which defaults to the sparse registry, making
-    // this fetch unnecessary, but requires us to omit the "frozen" argument
-    let locked_args = if major == 1 && minor < 17 {
+    // this fetch unnecessary, but requires us to omit the "frozen" argument.
+    let locked_args = if (major == 1 && minor < 17) || (major == 0 && minor == 0 && patch == 0) {
         // First, we resolve the dependencies and cache them in the Docker container
         // ARM processors running Linux have a bug where the build fails if the dependencies are not preloaded.
         // Running the build without the pre-fetch will cause the container to run out of memory.
@@ -1050,6 +1092,8 @@ pub fn build(
                 "exec",
                 "-e",
                 &format!("RUSTUP_TOOLCHAIN={active_toolchain}"),
+                "-w",
+                &build_path,
                 &container_id,
             ])
             .args([
@@ -1059,6 +1103,7 @@ pub fn build(
                 "fetch",
                 "--locked",
             ])
+            .args(&manifest_path_filter)
             .stderr(Stdio::inherit())
             .stdout(Stdio::inherit())
             .output()?;
@@ -1068,7 +1113,12 @@ pub fn build(
         );
         println!("Finished fetching build dependencies");
 
-        ["--frozen", "--locked"].as_slice()
+        // Unknown custom images: prefetch for ARM, omit --frozen/sparse.
+        if major == 0 && minor == 0 && patch == 0 {
+            ["--locked"].as_slice()
+        } else {
+            ["--frozen", "--locked"].as_slice()
+        }
     } else {
         // To be totally safe, force the build to use the sparse registry
         [
@@ -1668,41 +1718,181 @@ pub fn get_solana_version_from_workspace_metadata(workspace_root: &str) -> Optio
     None
 }
 
-/// Tries solana-program, then solana-program-error, then solana-account-info in Cargo.lock
-pub fn get_solana_version_from_lockfile(lockfile: &str) -> anyhow::Result<(u32, u32, u32)> {
-    get_pkg_version_from_cargo_lock("solana-program", lockfile)
-        .or_else(|_| get_pkg_version_from_cargo_lock("solana-program-error", lockfile))
-        .or_else(|_| get_pkg_version_from_cargo_lock("solana-account-info", lockfile))
-        .map_err(|_| {
-            anyhow!(
-                "Failed to determine Solana version from Cargo.lock (tried solana-program, solana-program-error, solana-account-info)"
-            )
-        })
+/// Soft migration for older programs: only trust Cargo.lock for Solana 1.x,
+/// when `solana-program` versions still matched the CLI. Later crate lines
+/// (e.g. solana-program 2.x with Agave CLI 4.x) must not select a build image.
+fn get_legacy_solana_version_from_lockfile(
+    lockfile: &str,
+    root_package: Option<&str>,
+) -> anyhow::Result<Option<(u32, u32, u32)>> {
+    // Image availability is checked by the caller so a 1.x version without an
+    // image still reports "No compatible Docker image found for 1.x.y".
+    Ok(get_solana_version_from_lockfile(lockfile, root_package)?
+        .filter(|(major, _, _)| *major == 1))
+}
+
+/// Tries solana-program, then solana-program-error, then solana-account-info in Cargo.lock.
+/// Returns `Ok(None)` when none are present; errors on ambiguous versions or an unreadable lockfile.
+pub fn get_solana_version_from_lockfile(
+    lockfile: &str,
+    root_package: Option<&str>,
+) -> anyhow::Result<Option<(u32, u32, u32)>> {
+    for package_name in [
+        "solana-program",
+        "solana-program-error",
+        "solana-account-info",
+    ] {
+        if let Some(version) =
+            get_pkg_version_from_cargo_lock(package_name, lockfile, root_package)?
+        {
+            return Ok(Some(version));
+        }
+    }
+    Ok(None)
+}
+
+fn parse_semver_triple(version: &str) -> Option<(u32, u32, u32)> {
+    let version_parts: Vec<&str> = version.split('.').collect();
+    if version_parts.len() != 3 {
+        return None;
+    }
+    Some((
+        version_parts[0].parse().ok()?,
+        version_parts[1].parse().ok()?,
+        version_parts[2].parse().ok()?,
+    ))
+}
+
+fn fmt_versions(versions: &[(u32, u32, u32)]) -> String {
+    versions
+        .iter()
+        .map(|(maj, min, pat)| format!("{maj}.{min}.{pat}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn find_pkg_version_in_dependency_tree(
+    lockfile: &Lockfile,
+    root_package: &str,
+    package_name: &str,
+) -> anyhow::Result<Option<(u32, u32, u32)>> {
+    use std::collections::{HashSet, VecDeque};
+
+    let roots: Vec<_> = lockfile
+        .packages
+        .iter()
+        .filter(|pkg| pkg.name.to_string() == root_package)
+        .collect();
+    if roots.is_empty() {
+        return Ok(None);
+    }
+
+    let mut queue = VecDeque::new();
+    let mut visited = HashSet::new();
+    for root in &roots {
+        queue.push_back((root.name.to_string(), root.version.to_string()));
+    }
+
+    let mut found = Vec::new();
+    while let Some((name, version)) = queue.pop_front() {
+        if !visited.insert((name.clone(), version.clone())) {
+            continue;
+        }
+        let Some(pkg) = lockfile
+            .packages
+            .iter()
+            .find(|pkg| pkg.name.to_string() == name && pkg.version.to_string() == version)
+        else {
+            continue;
+        };
+        if name == package_name {
+            if let Some(triple) = parse_semver_triple(&version) {
+                found.push(triple);
+            }
+            continue;
+        }
+        for dep in &pkg.dependencies {
+            queue.push_back((dep.name.to_string(), dep.version.to_string()));
+        }
+    }
+
+    found.sort_unstable();
+    found.dedup();
+    match found.as_slice() {
+        [] => Ok(None),
+        [version] => Ok(Some(*version)),
+        _ => Err(anyhow!(
+            "Ambiguous {package_name} versions in {root_package}'s dependency tree ({}); set [workspace.metadata.cli] solana = \"x.y.z\" or pass --base-image",
+            fmt_versions(&found)
+        )),
+    }
 }
 
 pub fn get_pkg_version_from_cargo_lock(
     package_name: &str,
     cargo_lock_file: &str,
-) -> anyhow::Result<(u32, u32, u32)> {
+    root_package: Option<&str>,
+) -> anyhow::Result<Option<(u32, u32, u32)>> {
     let lockfile = Lockfile::load(cargo_lock_file)?;
-    let res = lockfile
+
+    // When a program package is known, only trust its dependency tree, do not
+    // fall back to a lockfile-wide search that may pick another crate's version.
+    if let Some(root_package) = root_package {
+        if !lockfile
+            .packages
+            .iter()
+            .any(|pkg| pkg.name.to_string() == root_package)
+        {
+            return Err(anyhow!(
+                "Package {root_package} not found in {cargo_lock_file}; check --library-name or set [workspace.metadata.cli] solana = \"x.y.z\""
+            ));
+        }
+        return find_pkg_version_in_dependency_tree(&lockfile, root_package, package_name);
+    }
+
+    let mut versions: Vec<(u32, u32, u32)> = lockfile
         .packages
         .iter()
         .filter(|pkg| pkg.name.to_string() == *package_name)
-        .filter_map(|pkg| {
-            let version = pkg.version.clone().to_string();
-            let version_parts: Vec<&str> = version.split(".").collect();
-            if version_parts.len() == 3 {
-                let major = version_parts[0].parse::<u32>().unwrap_or(0);
-                let minor = version_parts[1].parse::<u32>().unwrap_or(0);
-                let patch = version_parts[2].parse::<u32>().unwrap_or(0);
-                return Some((major, minor, patch));
-            }
-            None
-        })
-        .next()
-        .ok_or_else(|| anyhow!("Failed to parse {} version from Cargo.lock", package_name))?;
-    Ok(res)
+        .filter_map(|pkg| parse_semver_triple(&pkg.version.to_string()))
+        .collect();
+    versions.sort_unstable();
+    versions.dedup();
+
+    match versions.as_slice() {
+        [version] => Ok(Some(*version)),
+        [] => Ok(None),
+        _ => Err(anyhow!(
+            "Ambiguous {} versions in Cargo.lock ({}); set [workspace.metadata.cli] solana = \"x.y.z\" or pass --library-name / --base-image",
+            package_name,
+            fmt_versions(&versions)
+        )),
+    }
+}
+
+fn resolve_solana_version_from_base_image(base_image: &str) -> Option<(u32, u32, u32)> {
+    for ((major, minor, patch), digest) in IMAGE_MAP.iter() {
+        if base_image.contains(digest) {
+            return Some((*major, *minor, *patch));
+        }
+    }
+
+    let without_digest = base_image
+        .split_once("@sha256:")
+        .map(|(image, _)| image)
+        .unwrap_or(base_image);
+    let tag = without_digest.rsplit(':').next()?.trim_start_matches('v');
+    let parts: Vec<&str> = tag.split('.').collect();
+    if parts.len() == 3 {
+        let major = parts[0].parse::<u32>().ok()?;
+        let minor = parts[1].parse::<u32>().ok()?;
+        let patch = parts[2].parse::<u32>().ok()?;
+        // Only trust tags that match a known Solana/Agave image version.
+        if IMAGE_MAP.contains_key(&(major, minor, patch)) {
+            return Some((major, minor, patch));
+        }
+    }
+    None
 }
 
 pub fn get_lib_name_from_cargo_toml(cargo_toml_file: &str) -> anyhow::Result<String> {

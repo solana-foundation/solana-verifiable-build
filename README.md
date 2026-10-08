@@ -27,14 +27,12 @@ For production use, prefer installing from a tagged release.
 solana-verify build
 ```
 
-For programs that don't depend on `solana-program` (e.g. SDK v3 or pinocchio), add the Solana CLI version in your root `Cargo.toml` so the tool can pick the right build image:
+Add the Solana/Agave version in your root `Cargo.toml` so the tool can pick the right build image (required unless you pass `--base-image` or use the legacy `--bpf` image). Older Solana 1.x programs may still resolve via `Cargo.lock` when `solana-program` matches a shipped image:
 
 ```toml
 [workspace.metadata.cli]
-solana = "3.0.0"
+solana = "4.2.0"
 ```
-
-The tool checks this first, then falls back to `Cargo.lock` (solana-program, solana-program-error, or solana-account-info).
 
 3. Deploy and verify:
 
@@ -50,6 +48,12 @@ solana-verify remote submit-job --program-id $PROGRAM_ID --uploader $THE_PUBKEY_
 ```
 
 > The legacy `--remote` flag on `verify-from-repo` has been deprecated. Upload your PDA with programs upgrade authority, then run the `remote submit-job` command to queue OtterSec's worker. For a full walkthrough of the PDA workflow, see the [Solana verified builds guide](https://solana.com/docs/programs/verified-builds).
+
+## Examples
+
+- `examples/hello_world` — native `solana-program`
+- `examples/hello_world_pinocchio` — Pinocchio
+- `examples/hello_world_anchor` — Anchor
 
 ## Documentation
 

@@ -20,6 +20,7 @@ jobs:
           - test_drift_v2
           - test_marginfi_v2
           - test_local_example
+          - test_local_anchor_example
           - test_verify_from_image
           - test_games_preset
           - test_agave_2_1
