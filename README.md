@@ -44,8 +44,10 @@ solana program deploy -u $NETWORK_URL target/deploy/$PROGRAM_LIB_NAME.so --progr
 solana-verify verify-from-repo -u $NETWORK_URL --program-id $PROGRAM_ID https://github.com/$REPO_PATH
 
 # Trigger a remote job
-solana-verify remote submit-job --program-id $PROGRAM_ID --uploader $THE_PUBKEY_THAT_UPLOADED_YOUR_BUILD_DATA
+solana-verify remote submit-job -u $NETWORK_URL --program-id $PROGRAM_ID --uploader $THE_PUBKEY_THAT_UPLOADED_YOUR_BUILD_DATA
 ```
+
+The `remote` commands pick the remote verification server from the genesis hash of the `-u` cluster: `https://verify.osec.io` for mainnet and `https://verify-devnet.osec.io` for devnet. Pass `--remote-url <URL>` to use another server, which is required for any other cluster.
 
 > The legacy `--remote` flag on `verify-from-repo` has been deprecated. Upload your PDA with programs upgrade authority, then run the `remote submit-job` command to queue OtterSec's worker. For a full walkthrough of the PDA workflow, see the [Solana verified builds guide](https://solana.com/docs/programs/verified-builds).
 

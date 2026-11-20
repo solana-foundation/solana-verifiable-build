@@ -1,6 +1,7 @@
 use anyhow::{anyhow, ensure};
 use api::{
-    get_last_deployed_slot, get_remote_job, get_remote_status, send_job_with_uploader_to_remote,
+    get_last_deployed_slot, get_remote_job, get_remote_status, resolve_remote_server_url,
+    send_job_with_uploader_to_remote,
 };
 use base64::{prelude::BASE64_STANDARD, Engine};
 use bincode::serialize;
@@ -45,6 +46,7 @@ use crate::solana_program::{
 };
 
 const MAINNET_GENESIS_HASH: &str = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+const DEVNET_GENESIS_HASH: &str = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const MAX_RETRIES: u32 = 3;
 const INITIAL_RETRY_DELAY_MS: u64 = 500;
 
@@ -376,6 +378,11 @@ async fn main() -> anyhow::Result<()> {
         .subcommand(SubCommand::with_name("remote")
             .about("Send a command to a remote machine")
         .setting(AppSettings::SubcommandRequiredElseHelp)
+            .arg(Arg::with_name("remote-url")
+                .long("remote-url")
+                .takes_value(true)
+                .global(true)
+                .help("Remote verification server to use. Defaults to https://verify.osec.io for mainnet and https://verify-devnet.osec.io for devnet, chosen by the genesis hash of the --url cluster"))
             .subcommand(SubCommand::with_name("get-status")
                 .about("Get the verification status of a program")
                 .arg(Arg::with_name("program-id")
@@ -644,28 +651,39 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
-        ("remote", Some(sub_m)) => match sub_m.subcommand() {
-            ("get-status", Some(sub_m)) => {
-                let program_id = sub_m.value_of("program-id").unwrap();
-                get_remote_status(Address::try_from(program_id)?).await
-            }
-            ("get-job", Some(sub_m)) => {
-                let job_id = sub_m.value_of("job-id").unwrap();
-                get_remote_job(job_id).await
-            }
-            ("submit-job", Some(sub_m)) => {
-                let program_id = sub_m.value_of("program-id").unwrap();
-                let uploader = sub_m.value_of("uploader").unwrap();
-
-                send_job_with_uploader_to_remote(
+        ("remote", Some(remote_m)) => {
+            let remote_url = |sub_m: &ArgMatches| {
+                resolve_remote_server_url(
                     &connection,
-                    &Address::try_from(program_id)?,
-                    &Address::try_from(uploader)?,
+                    sub_m
+                        .value_of("remote-url")
+                        .or_else(|| remote_m.value_of("remote-url")),
                 )
-                .await
+            };
+            match remote_m.subcommand() {
+                ("get-status", Some(sub_m)) => {
+                    let program_id = sub_m.value_of("program-id").unwrap();
+                    get_remote_status(&remote_url(sub_m)?, Address::try_from(program_id)?).await
+                }
+                ("get-job", Some(sub_m)) => {
+                    let job_id = sub_m.value_of("job-id").unwrap();
+                    get_remote_job(&remote_url(sub_m)?, job_id).await
+                }
+                ("submit-job", Some(sub_m)) => {
+                    let program_id = sub_m.value_of("program-id").unwrap();
+                    let uploader = sub_m.value_of("uploader").unwrap();
+
+                    send_job_with_uploader_to_remote(
+                        &connection,
+                        &Address::try_from(program_id)?,
+                        &Address::try_from(uploader)?,
+                        &remote_url(sub_m)?,
+                    )
+                    .await
+                }
+                _ => unreachable!(),
             }
-            _ => unreachable!(),
-        },
+        }
         // Handle other subcommands in a similar manner, for now let's panic
         _ => panic!(
             "Unknown subcommand: {:?}\nUse '--help' to see available commands",

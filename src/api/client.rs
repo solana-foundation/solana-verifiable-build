@@ -15,10 +15,42 @@ use crate::api::models::{
 };
 use crate::solana_program::get_program_pda;
 use crate::SIGNAL_RECEIVED;
-use crate::{get_genesis_hash, MAINNET_GENESIS_HASH};
+use crate::{get_genesis_hash, DEVNET_GENESIS_HASH, MAINNET_GENESIS_HASH};
 
-// URL for the remote server
-pub const REMOTE_SERVER_URL: &str = "https://verify.osec.io";
+/// Remote verification server for mainnet programs.
+pub const MAINNET_REMOTE_SERVER_URL: &str = "https://verify.osec.io";
+/// Remote verification server for devnet programs.
+pub const DEVNET_REMOTE_SERVER_URL: &str = "https://verify-devnet.osec.io";
+
+/// Returns the remote verification server for the cluster with `genesis_hash`, or `None` for a
+/// cluster other than mainnet or devnet.
+fn remote_server_url_for_genesis(genesis_hash: &str) -> Option<&'static str> {
+    match genesis_hash {
+        MAINNET_GENESIS_HASH => Some(MAINNET_REMOTE_SERVER_URL),
+        DEVNET_GENESIS_HASH => Some(DEVNET_REMOTE_SERVER_URL),
+        _ => None,
+    }
+}
+
+/// Returns `override_url` without a trailing slash if set, else the remote verification server for
+/// the cluster that `connection` points at. Only queries the cluster when `override_url` is `None`,
+/// and fails for a cluster other than mainnet or devnet.
+pub fn resolve_remote_server_url(
+    connection: &RpcClient,
+    override_url: Option<&str>,
+) -> anyhow::Result<String> {
+    if let Some(url) = override_url {
+        return Ok(url.trim_end_matches('/').to_string());
+    }
+    let genesis_hash = get_genesis_hash(connection)?;
+    remote_server_url_for_genesis(&genesis_hash)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            anyhow!(
+                "No remote verification server is known for the cluster with genesis hash {genesis_hash}. Pass --remote-url to choose one."
+            )
+        })
+}
 
 fn loading_animation(receiver: Receiver<bool>) {
     let started = Instant::now();
@@ -93,23 +125,19 @@ pub async fn send_job_with_uploader_to_remote(
     connection: &RpcClient,
     program_id: &Address,
     uploader: &Address,
+    remote_url: &str,
 ) -> anyhow::Result<()> {
     // Check that PDA exists before sending job
-    let genesis_hash = get_genesis_hash(connection)?;
-    if genesis_hash != MAINNET_GENESIS_HASH {
-        return Err(anyhow!(format!(
-            "Remote verification service only supports mainnet. You're currently connected to a different network.\n\nTo submit a remote job:\n• Connect to mainnet with: --url mainnet\n• Upload your verify PDA via `solana-verify verify-from-repo`\n• Run `solana-verify remote submit-job --program-id {program_id} --uploader {uploader}`\n\nLearn more: https://solana.com/docs/programs/verified-builds"
-        )));
-    }
     get_program_pda(connection, program_id, Some(uploader.to_string()), None).await?;
 
     let client = Client::builder()
         .timeout(Duration::from_secs(18000))
         .build()?;
 
+    println!("Using remote verification server: {remote_url}");
     // Send the POST request
     let response = client
-        .post(format!("{REMOTE_SERVER_URL}/verify-with-signer"))
+        .post(format!("{remote_url}/verify-with-signer"))
         .json(&json!({
             "program_id": program_id.to_string(),
             "signer": uploader.to_string(),
@@ -119,13 +147,14 @@ pub async fn send_job_with_uploader_to_remote(
         .send()
         .await?;
 
-    handle_submission_response(&client, response, program_id).await
+    handle_submission_response(&client, response, program_id, remote_url).await
 }
 
 pub async fn handle_submission_response(
     client: &Client,
     response: Response,
     program_id: &Address,
+    remote_url: &str,
 ) -> anyhow::Result<()> {
     if response.status().is_success() {
         // First get the raw text to preserve it in case of parsing failure
@@ -153,7 +182,7 @@ pub async fn handle_submission_response(
                 break; // Exit the loop and continue with normal error handling
             }
 
-            let status = check_job_status(client, &request_id).await?;
+            let status = check_job_status(client, remote_url, &request_id).await?;
             match status.status {
                 JobStatus::InProgress => {
                     if SIGNAL_RECEIVED.load(Ordering::Relaxed) {
@@ -190,7 +219,7 @@ pub async fn handle_submission_response(
                     println!("Program {program_id} has not been verified. ❌");
                     eprintln!("Error message: {}", status_response.message.as_str());
                     println!(
-                        "You can check the logs for more details here: {REMOTE_SERVER_URL}/logs/{request_id}"
+                        "You can check the logs for more details here: {remote_url}/logs/{request_id}"
                     );
                     break;
                 }
@@ -202,30 +231,34 @@ pub async fn handle_submission_response(
                 }
             }
         }
-        let url = format!("https://verify.osec.io/status/{program_id}");
+        let url = format!("{remote_url}/status/{program_id}");
         println!("Check the verification status at: {url}");
-        println!("Job url: {REMOTE_SERVER_URL}/job/{request_id}");
+        println!("Job url: {remote_url}/job/{request_id}");
 
         Ok(())
     } else if response.status() == 409 {
         let response = response.json::<ErrorResponse>().await?;
         eprintln!("Error: {}", response.error.as_str());
-        let url = format!("{REMOTE_SERVER_URL}/status/{program_id}");
+        let url = format!("{remote_url}/status/{program_id}");
         println!("Check the status at: {url}");
         Ok(())
     } else {
         eprintln!("Encountered an error while attempting to send the job to remote");
         Err(anyhow!("{:?}", response.text().await?))?;
-        let url = format!("{REMOTE_SERVER_URL}/status/{program_id}");
+        let url = format!("{remote_url}/status/{program_id}");
         println!("Check the verification status at: {url}");
         Ok(())
     }
 }
 
-async fn check_job_status(client: &Client, request_id: &str) -> anyhow::Result<JobResponse> {
+async fn check_job_status(
+    client: &Client,
+    remote_url: &str,
+    request_id: &str,
+) -> anyhow::Result<JobResponse> {
     // Get /job/:id
     let response = client
-        .get(format!("{REMOTE_SERVER_URL}/job/{request_id}"))
+        .get(format!("{remote_url}/job/{request_id}"))
         .send()
         .await
         .unwrap();
@@ -262,13 +295,13 @@ async fn check_job_status(client: &Client, request_id: &str) -> anyhow::Result<J
     }
 }
 
-pub async fn get_remote_status(program_id: Address) -> anyhow::Result<()> {
+pub async fn get_remote_status(remote_url: &str, program_id: Address) -> anyhow::Result<()> {
     let client = Client::builder()
         .timeout(Duration::from_secs(18000))
         .build()?;
 
     let response = client
-        .get(format!("{REMOTE_SERVER_URL}/status-all/{program_id}"))
+        .get(format!("{remote_url}/status-all/{program_id}"))
         .send()
         .await?;
 
@@ -277,12 +310,43 @@ pub async fn get_remote_status(program_id: Address) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn get_remote_job(job_id: &str) -> anyhow::Result<()> {
+pub async fn get_remote_job(remote_url: &str, job_id: &str) -> anyhow::Result<()> {
     let client = Client::builder()
         .timeout(Duration::from_secs(18000))
         .build()?;
 
-    let job = check_job_status(&client, job_id).await?;
+    let job = check_job_status(&client, remote_url, job_id).await?;
     println!("{job}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remote_server_url_follows_the_cluster() {
+        assert_eq!(
+            remote_server_url_for_genesis(MAINNET_GENESIS_HASH),
+            Some(MAINNET_REMOTE_SERVER_URL)
+        );
+        assert_eq!(
+            remote_server_url_for_genesis(DEVNET_GENESIS_HASH),
+            Some(DEVNET_REMOTE_SERVER_URL)
+        );
+        assert_eq!(
+            remote_server_url_for_genesis("4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY"),
+            None
+        );
+    }
+
+    #[test]
+    fn remote_url_override_skips_the_cluster() {
+        // Nothing listens on port 1, so a genesis hash query would fail.
+        let connection = RpcClient::new("http://127.0.0.1:1".to_string());
+        assert_eq!(
+            resolve_remote_server_url(&connection, Some("http://localhost:3000/")).unwrap(),
+            "http://localhost:3000"
+        );
+    }
 }

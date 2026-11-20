@@ -499,7 +499,7 @@ pub async fn get_program_pda(
         ))
     } else {
         Err(anyhow!(
-            "Verification PDA not found for {:?} and uploader {:?}. Make sure you've uploaded the PDA to mainnet.",
+            "Verification PDA not found for {:?} and uploader {:?}. Make sure you've uploaded the PDA to this cluster.",
             program_id,
             signer_pubkey
         ))
